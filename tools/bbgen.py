@@ -73,12 +73,49 @@ class Model:
         self.cubes.append(c)
         return c
 
+    def material_variant(self, mat, suffix, k):
+        name = mat + suffix
+        if name not in self.materials:
+            base = self.materials[mat]
+            rgb = tuple(clamp(c * k[0] + k[1]) for c in base.rgb)
+            self.materials[name] = Material(rgb, base.noise, base.alpha, base.edge)
+        return name
+
+    def edge(self, name, axis, l0, l1, c1, c2, s1, s2, b, mat, group, hi=None):
+        """45 deg chamfer strip along `axis` (from l0 to l1) filling the corner
+        notch whose outer corner is (c1, c2) in the two cross axes; s1/s2 give
+        the direction the corner points to.  Cross axes: z->(x,y), x->(y,z),
+        y->(z,x)."""
+        i = "xyz".index(axis)
+        a1, a2 = {0: (1, 2), 1: (2, 0), 2: (0, 1)}[i]
+        r2 = math.sqrt(2)
+        d = b / (2 * r2)
+        half_len = b / r2 + 0.01
+        cpt = [0.0, 0.0, 0.0]
+        cpt[i] = (l0 + l1) / 2
+        cpt[a1] = c1 - s1 * b / 2 - s1 * d / r2
+        cpt[a2] = c2 - s2 * b / 2 - s2 * d / r2
+        bl, bh = list(cpt), list(cpt)
+        bl[i], bh[i] = l0, l1
+        bl[a1], bh[a1] = cpt[a1] - half_len, cpt[a1] + half_len
+        bl[a2], bh[a2] = cpt[a2] - d, cpt[a2] + d
+        if hi is None:
+            hi = (a1 == 1 and s1 > 0) or (a2 == 1 and s2 > 0)
+        m_ = self.material_variant(mat, "_hi", (1.35, 22)) if hi else \
+            self.material_variant(mat, "_edge", (1.1, 6))
+        return self.box(name, *bl, *bh, m_, group, rot=(axis, -45.0 * s1 * s2, cpt))
+
     def bevel(self, name, x0, y0, z0, x1, y1, z1, b, mat, group, pattern=None, axis="z",
               rot=None, text=None):
-        """Box whose four edges along `axis` are chamfered by a step of size b."""
+        """Box whose four edges along `axis` are chamfered by b.
+
+        Unrotated boxes get true 45 deg chamfers (two core boxes + four strips
+        rotated about `axis`); the strips on the upper edges use a lighter
+        tone, like a painted highlight.  Boxes that already carry a rotation
+        fall back to a stepped bevel (Java allows one rotation per cube)."""
         lo, hi = [x0, y0, z0], [x1, y1, z1]
         i = "xyz".index(axis)
-        a1, a2 = [k for k in range(3) if k != i]
+        a1, a2 = {0: (1, 2), 1: (2, 0), 2: (0, 1)}[i]
         e = 0.005
         l1, h1 = list(lo), list(hi)
         l1[a1] += b
@@ -90,6 +127,14 @@ class Model:
         h2[i] -= e
         c = self.box(name, *l1, *h1, mat, group, pattern, rot, text)
         self.box(name + "_b", *l2, *h2, mat, group, pattern, rot, text)
+        if rot is not None or b < 0.04:
+            return c
+        for s1 in (-1, 1):
+            for s2 in (-1, 1):
+                c1 = (lo[a1] + hi[a1]) / 2 + s1 * (hi[a1] - lo[a1]) / 2
+                c2 = (lo[a2] + hi[a2]) / 2 + s2 * (hi[a2] - lo[a2]) / 2
+                self.edge("%s_ch%d%d" % (name, s1 + 1, s2 + 1), axis, lo[i] + 2 * e, hi[i] - 2 * e,
+                          c1, c2, s1, s2, b, mat, group)
         return c
 
     def pin_x(self, name, cx, cy, cz, r, x0, x1, mat, group, rot=None):
@@ -396,12 +441,14 @@ def paint_face(px, c, f, ux, uy, w, h, mat):
             p = tuple(tl[i] + a * (tr[i] - tl[i]) + b * (bl[i] - tl[i]) for i in range(3))
             r, g, bb = mat.rgb
             alpha = mat.alpha
-            d = rng.uniform(-mat.noise, mat.noise)
+            d = rng.uniform(-mat.noise, mat.noise) * 0.45
             if mat.edge and w >= 3 and h >= 3:
-                if v == 0 or u == 0:
-                    d += 16
-                elif v == h - 1 or u == w - 1:
+                if v == 0:
+                    d += 18
+                elif v == h - 1:
                     d -= 14
+                elif u == 0 or u == w - 1:
+                    d += 6
             col = None
             if pat:
                 res = pat(p, f, u, v, w, h, c, rng)
@@ -477,7 +524,8 @@ def pat_serration(p, f, u, v, w, h, c, rng):
 
 
 def pat_stipple(p, f, u, v, w, h, c, rng):
-    return rng.choice((-9, -5, 0, 4, 8))
+    # chunky checker stippling (2x2 texel cells) like hand-painted gun packs
+    return (-11 if ((u // 2) + (v // 2)) % 2 else 5) + rng.choice((-3, 0, 3))
 
 
 def pat_knurl(p, f, u, v, w, h, c, rng):

@@ -6,9 +6,9 @@ Scale: 1 model unit ~= 7 mm.  Muzzle points north (-Z), bore axis at x=8.
 from bbgen import Material, Model
 
 MATERIALS = {
-    "slide": Material((50, 51, 54), 5),        # nDLC slide
+    "slide": Material((58, 59, 63), 5),        # nDLC slide
     "slide_dark": Material((38, 39, 42), 4),
-    "frame": Material((42, 42, 40), 6),        # polymer frame
+    "frame": Material((48, 48, 46), 6),        # polymer frame
     "frame_dark": Material((32, 32, 31), 5),
     "steel": Material((70, 71, 75), 7),
     "barrel": Material((82, 82, 86), 6),
@@ -56,12 +56,15 @@ def build():
         z += 0.45
         i += 1
     B("slide_rear", 6.2, 15.15, 26.0, 9.8, 18.6, 26.6, "slide", g)
-    # chamfered top
+    # flat top with large 45 deg chamfers on both upper edges (highlighted)
     for nm, (a, b) in {"front": (0.6, 7.5), "rear": (12.3, 26.45)}.items():
-        B("slide_top_a_" + nm, 6.4, 18.6, a, 9.6, 18.9, b, "slide", g)
-        B("slide_top_b_" + nm, 6.65, 18.9, a, 9.35, 19.1, b - 0.05, "slide", g)
-    B("slide_top_a_port", 6.4, 18.6, 7.5, 7.0, 18.9, 12.3, "slide", g)
-    B("slide_top_b_port", 6.65, 18.9, 7.5, 7.0, 19.1, 12.3, "slide", g)
+        B("slide_top_" + nm, 6.75, 18.6, a, 9.25, 19.15, b, "slide", g)
+    B("slide_top_port", 6.75, 18.6, 7.5, 7.0, 19.15, 12.3, "slide", g)
+    m.edge("slide_chamfer_l", "z", 0.6, 26.45, 6.2, 19.15, -1, 1, 0.55, "slide", g)
+    m.edge("slide_chamfer_r_f", "z", 0.6, 7.5, 9.8, 19.15, 1, 1, 0.55, "slide", g)
+    m.edge("slide_chamfer_r_b", "z", 12.3, 26.45, 9.8, 19.15, 1, 1, 0.55, "slide", g)
+    m.edge("slide_chamfer_front", "x", 6.75, 9.25, 19.15, 0.6, 1, -1, 0.4, "slide", g)
+    m.edge("slide_chamfer_rear", "x", 6.75, 9.25, 19.15, 26.45, 1, 1, 0.3, "slide", g)
     B("port_rim_front", 9.0, 17.8, 7.45, 9.8, 18.6, 7.5, "slide_dark", g)
     B("port_rim_low", 9.0, 17.75, 7.5, 9.8, 17.8, 12.3, "slide_dark", g)
     B("slide_stop_notch_l", 6.18, 15.15, 12.9, 6.2, 15.5, 13.9, "slide_dark", g)
@@ -120,11 +123,12 @@ def build():
     B("thumb_rest_l", 6.27, 13.75, 14.4, 6.3, 14.45, 16.6, "frame_dark", g, "stipple")
     B("thumb_rest_r", 9.7, 13.75, 14.4, 9.73, 14.45, 16.6, "frame_dark", g, "stipple")
     # trigger guard, square front with serrations
-    m.bevel("tg_front", 7.45, 10.6, 7.9, 8.55, 13.7, 8.7, 0.1, "frame", g, axis="y")
+    m.bevel("tg_front", 7.45, 10.75, 7.9, 8.55, 13.7, 8.7, 0.1, "frame", g, axis="y")
+    m.edge("tg_corner", "x", 7.47, 8.53, 10.25, 7.9, -1, -1, 0.5, "frame", g)
     for k in range(5):
         y = 10.9 + k * 0.45
         B("tg_serr_%d" % k, 7.55, y, 7.83, 8.45, y + 0.2, 7.9, "frame", g)
-    m.bevel("tg_bottom", 7.45, 10.25, 7.9, 8.55, 10.9, 16.6, 0.1, "frame", g)
+    m.bevel("tg_bottom", 7.45, 10.25, 8.4, 8.55, 10.9, 16.6, 0.1, "frame", g)
     B("tg_undercut", 7.5, 10.9, 15.2, 8.5, 11.4, 16.2, "frame", g)
     # trigger with safety blade
     B("trigger_shoe_top", 7.75, 12.3, 11.55, 8.25, 13.6, 12.0, "frame", g)

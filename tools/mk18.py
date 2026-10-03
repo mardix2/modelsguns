@@ -10,12 +10,12 @@ Scale: 1 model unit ~= 15.6 mm.  Muzzle points north (-Z), bore axis at x=8.
 from bbgen import Material, Model
 
 MATERIALS = {
-    "alu": Material((52, 53, 57), 5),          # black anodised aluminium
+    "alu": Material((60, 61, 66), 5),          # black anodised aluminium
     "alu_dark": Material((40, 41, 44), 4),
     "steel": Material((60, 60, 64), 7),        # phosphated steel
     "steel_light": Material((92, 92, 96), 7),  # bolt / carrier
     "steel_dark": Material((32, 32, 35), 5),
-    "polymer": Material((42, 42, 40), 6),
+    "polymer": Material((48, 48, 46), 6),
     "fde": Material((160, 133, 94), 8),        # Magpul FDE
     "fde_dark": Material((132, 108, 74), 7),
     "rubber": Material((26, 26, 26), 5),
@@ -119,8 +119,12 @@ def build():
     # upper receiver (flat top, ejection port open)
     # ======================================================================
     g = "upper"
-    B("upper_left", 7.2, 9.0, 5.4, 8.2, 11.35, 15.6, "alu", g)
-    B("upper_top_r", 8.2, 10.55, 5.4, 8.8, 11.35, 15.6, "alu", g)
+    B("upper_left", 7.2, 9.0, 5.4, 8.2, 11.05, 15.6, "alu", g)
+    B("upper_left_top", 7.5, 11.05, 5.4, 8.2, 11.35, 15.6, "alu", g)
+    B("upper_top_r", 8.2, 10.55, 5.4, 8.8, 11.05, 15.6, "alu", g)
+    B("upper_top_r_top", 8.2, 11.05, 5.4, 8.5, 11.35, 15.6, "alu", g)
+    m.edge("upper_chamfer_l", "z", 5.4, 15.6, 7.2, 11.35, -1, 1, 0.3, "alu", g)
+    m.edge("upper_chamfer_r", "z", 5.4, 15.6, 8.8, 11.35, 1, 1, 0.3, "alu", g)
     B("upper_bot_r", 8.2, 9.0, 5.4, 8.8, 9.5, 15.6, "alu", g)
     B("upper_front_r", 8.2, 9.5, 5.4, 8.8, 10.55, 8.3, "alu", g)
     B("upper_rear_r", 8.2, 9.5, 11.2, 8.8, 10.55, 15.6, "alu", g)
@@ -174,7 +178,7 @@ def build():
     B("magwell_bevel", 7.15, 5.95, 6.75, 8.85, 6.6, 7.25, "alu", g, rot=("x", -22.5, (8, 6.3, 7.0)))
     B("lower_mid", 7.3, 7.3, 10.3, 8.7, 8.2, 15.6, "alu", g,
       text={"west": "SAFE SEMI"})
-    B("magwell", 7.05, 5.9, 7.0, 8.95, 9.0, 10.3, "alu", g,
+    m.bevel("magwell", 7.05, 5.9, 7.0, 8.95, 9.0, 10.3, 0.18, "alu", g, axis="y",
       text={"west": "MK18\nMOD 1\n5.56", "east": "CAL\n5.56"})
     B("magwell_front_rib", 7.6, 6.15, 6.85, 8.4, 8.8, 7.0, "alu", g)
     B("magwell_rim_l", 6.95, 5.65, 6.9, 7.05, 6.15, 10.4, "alu", g)
