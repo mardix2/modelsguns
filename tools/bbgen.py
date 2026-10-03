@@ -46,6 +46,7 @@ class Cube:
             rot = (axis, float(angle), list(origin))
         self.rot = rot
         self.uv = {}
+        self.text = {}  # face -> engraved text
 
     def shift(self, d):
         self.frm = [a + b for a, b in zip(self.frm, d)]
@@ -63,12 +64,85 @@ class Model:
         self.groups = []  # ordered group names
 
     # -- building helpers -------------------------------------------------
-    def box(self, name, x0, y0, z0, x1, y1, z1, mat, group, pattern=None, rot=None):
+    def box(self, name, x0, y0, z0, x1, y1, z1, mat, group, pattern=None, rot=None, text=None):
         if group not in self.groups:
             self.groups.append(group)
         c = Cube(name, (x0, y0, z0), (x1, y1, z1), mat, group, pattern, rot)
+        if text:
+            c.text = dict(text)
         self.cubes.append(c)
         return c
+
+    def bevel(self, name, x0, y0, z0, x1, y1, z1, b, mat, group, pattern=None, axis="z",
+              rot=None, text=None):
+        """Box whose four edges along `axis` are chamfered by a step of size b."""
+        lo, hi = [x0, y0, z0], [x1, y1, z1]
+        i = "xyz".index(axis)
+        a1, a2 = [k for k in range(3) if k != i]
+        e = 0.005
+        l1, h1 = list(lo), list(hi)
+        l1[a1] += b
+        h1[a1] -= b
+        l2, h2 = list(lo), list(hi)
+        l2[a2] += b
+        h2[a2] -= b
+        l2[i] += e
+        h2[i] -= e
+        c = self.box(name, *l1, *h1, mat, group, pattern, rot, text)
+        self.box(name + "_b", *l2, *h2, mat, group, pattern, rot, text)
+        return c
+
+    def pin_x(self, name, cx, cy, cz, r, x0, x1, mat, group, rot=None):
+        """Round-ish pin head along X (square + square rotated 45 deg)."""
+        if rot is None:
+            self.box(name, x0, cy - r, cz - r, x1, cy + r, cz + r, mat, group)
+            k = r * 0.82
+            self.box(name + "_r", x0 + 0.005, cy - k, cz - k, x1 - 0.005, cy + k, cz + k, mat, group,
+                     rot=("x", 45, (cx, cy, cz)))
+        else:
+            self.box(name, x0, cy - r, cz - r, x1, cy + r, cz + r, mat, group, rot=rot)
+
+    def teeth_z(self, name, side, a0, a1, base, h, z0, z1, mat, group, period=0.75, tooth=0.5):
+        """Picatinny teeth along Z.  side: up/down/left/right; a0..a1 is the
+        cross extent, base the surface they stand on, h their height."""
+        z = z0
+        i = 0
+        while z + tooth <= z1 + 1e-6:
+            if side == "up":
+                self.box("%s_%d" % (name, i), a0, base, z, a1, base + h, z + tooth, mat, group)
+            elif side == "down":
+                self.box("%s_%d" % (name, i), a0, base - h, z, a1, base, z + tooth, mat, group)
+            elif side == "right":
+                self.box("%s_%d" % (name, i), base, a0, z, base + h, a1, z + tooth, mat, group)
+            else:
+                self.box("%s_%d" % (name, i), base - h, a0, z, base, a1, z + tooth, mat, group)
+            z += period
+            i += 1
+
+    def ring_z(self, name, cx, cy, z0, z1, r, t, frac, mat, group, skip=(), pattern=None):
+        """Octagonal tube along Z made of 8 slats (frac<1 leaves slots between).
+        Slat order: 0 top, 1 top-right, 2 right, 3 bottom-right, 4 bottom,
+        5 bottom-left, 6 left, 7 top-left."""
+        w = r * math.tan(math.radians(22.5)) * frac
+        mid = (z0 + z1) / 2
+        for k in range(8):
+            if k in skip:
+                continue
+            nm = "%s_%d" % (name, k)
+            if k == 0:
+                self.box(nm, cx - w, cy + r - t, z0, cx + w, cy + r, z1, mat, group, pattern)
+            elif k == 4:
+                self.box(nm, cx - w, cy - r, z0, cx + w, cy - r + t, z1, mat, group, pattern)
+            elif k == 2:
+                self.box(nm, cx + r - t, cy - w, z0, cx + r, cy + w, z1, mat, group, pattern)
+            elif k == 6:
+                self.box(nm, cx - r, cy - w, z0, cx - r + t, cy + w, z1, mat, group, pattern)
+            else:
+                top = k in (1, 7)
+                ang = {1: -45, 7: 45, 3: 45, 5: -45}[k]
+                y0_, y1_ = (cy + r - t, cy + r) if top else (cy - r, cy - r + t)
+                self.box(nm, cx - w, y0_, z0 + 0.005, cx + w, y1_, z1 - 0.005, mat, group, pattern,
+                         rot=("z", ang, (cx, cy, mid)))
 
     def cyl_z(self, name, cx, cy, z0, z1, r, mat, group, pattern=None):
         """Octagonal 'cylinder' along Z made of four bars (0/45/90/135 deg)."""
@@ -111,10 +185,46 @@ class Model:
         d = self.density
         return max(1, int(round(w * d))), max(1, int(round(h * d)))
 
+    def hidden_faces(self):
+        """Faces fully buried inside another (unrotated, opaque) cube."""
+        occ = [c for c in self.cubes if self.materials[c.mat].alpha == 255]
+
+        def inside(o, p):
+            if o.rot:
+                ax, ang, org = o.rot
+                p = rotate(p, (ax, -ang, org))
+            return all(o.frm[i] - 1e-4 <= p[i] <= o.to[i] + 1e-4 for i in range(3))
+
+        hidden = set()
+        for ci, c in enumerate(self.cubes):
+            for f in FACES:
+                tl, tr, bl = (rotate(p, c.rot) for p in face_corners(c, f))
+                e1 = [tr[i] - tl[i] for i in range(3)]
+                e2 = [bl[i] - tl[i] for i in range(3)]
+                n = (e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
+                     e1[0] * e2[1] - e1[1] * e2[0])
+                nl = math.sqrt(sum(v * v for v in n)) or 1
+                n = [-v / nl * 0.002 for v in n]
+                ok = True
+                for a in (0.0, 0.25, 0.5, 0.75, 1.0):
+                    for b in (0.0, 0.25, 0.5, 0.75, 1.0):
+                        p = [tl[i] + a * e1[i] + b * e2[i] + n[i] for i in range(3)]
+                        if not any(o is not c and inside(o, p) for o in occ):
+                            ok = False
+                            break
+                    if not ok:
+                        break
+                if ok:
+                    hidden.add((ci, f))
+        return hidden
+
     def build_texture(self):
+        self.hidden = self.hidden_faces()
         items = []
         for ci, c in enumerate(self.cubes):
             for f in FACES:
+                if (ci, f) in self.hidden:
+                    continue
                 w, h = self.face_dims(c, f)
                 items.append((h, w, ci, f))
         # shelf packing, tallest first; grow the square atlas until it fits
@@ -143,7 +253,8 @@ class Model:
             el = {"name": c.name, "from": rnd(c.frm), "to": rnd(c.to)}
             if c.rot:
                 el["rotation"] = {"angle": c.rot[1], "axis": c.rot[0], "origin": rnd(c.rot[2])}
-            el["faces"] = {f: {"uv": rnd([v * s for v in c.uv[f]]), "texture": "#0"} for f in FACES}
+            el["faces"] = {f: {"uv": rnd([v * s for v in c.uv[f]]), "texture": "#0"}
+                           for f in FACES if f in c.uv}
             elements.append(el)
         groups = []
         for g in self.groups:
@@ -177,7 +288,8 @@ class Model:
                 "from": rnd(c.frm), "to": rnd(c.to), "autouv": 0,
                 "color": self.groups.index(c.group) % 8,
                 "rotation": rot, "origin": rnd(origin),
-                "faces": {f: {"uv": list(c.uv[f]), "texture": 0} for f in FACES},
+                "faces": {f: ({"uv": list(c.uv[f]), "texture": 0} if f in c.uv
+                              else {"uv": [0, 0, 0, 0], "texture": None}) for f in FACES},
                 "type": "cube", "uuid": uid(self.name, "cube", i, c.name),
             })
         for gi, g in enumerate(self.groups):
@@ -231,20 +343,27 @@ def rnd(v):
 
 
 def pack(items, size):
-    x = y = shelf_h = 0
+    """Skyline bottom-left packer; returns {item: (x, y)} or None."""
+    sky = [0] * size
     placed = {}
     for it in items:
         h, w = it[0], it[1]
         if w > size:
             return None
-        if x + w > size:
-            x, y = 0, y + shelf_h
-            shelf_h = 0
-        if y + h > size:
+        cands = [0] + [x for x in range(1, size) if sky[x] != sky[x - 1]]
+        best = None
+        for x in cands:
+            if x + w > size:
+                continue
+            y = max(sky[x:x + w])
+            if y + h <= size and (best is None or y < best[1] or (y == best[1] and x < best[0])):
+                best = (x, y)
+        if best is None:
             return None
-        placed[it] = (x, y)
-        x += w
-        shelf_h = max(shelf_h, h)
+        x, y = best
+        for i in range(x, x + w):
+            sky[i] = y + h
+        placed[it] = best
     return placed
 
 
@@ -297,6 +416,44 @@ def paint_face(px, c, f, ux, uy, w, h, mat):
                 px[ux + u, uy + v] = (clamp(r + d * 0.3), clamp(g + d * 0.3), clamp(bb + d * 0.3), alpha)
             else:
                 px[ux + u, uy + v] = (clamp(r + d), clamp(g + d), clamp(bb + d), alpha)
+    if f in c.text:
+        draw_text(px, c.text[f], ux, uy, w, h, mat)
+
+
+FONT = {
+    "A": "010101111101101", "B": "110101110101110", "C": "011100100100011",
+    "D": "110101101101110", "E": "111100110100111", "F": "111100110100100",
+    "G": "011100101101011", "H": "101101111101101", "I": "111010010010111",
+    "K": "101101110101101", "L": "100100100100111", "M": "101111111101101",
+    "N": "110101101101101", "O": "010101101101010", "P": "110101110100100",
+    "R": "110101110101101", "S": "011100010001110", "T": "111010010010010",
+    "U": "101101101101111", "V": "101101101101010", "X": "101101010101101",
+    "Y": "101101010010010", "0": "111101101101111", "1": "010110010010111",
+    "2": "110001010100111", "3": "110001010001110", "4": "101101111001001",
+    "5": "111100110001110", "6": "011100111101111", "7": "111001010010010",
+    "8": "111101111101111", "9": "111101111001110", ".": "000000000000010",
+    "x": "000101010101000", " ": "000000000000000", "-": "000000111000000",
+}
+
+
+def draw_text(px, text, ux, uy, w, h, mat):
+    lines = text.split("\n")
+    th = len(lines) * 6 - 1
+    if th > h:
+        return
+    col = tuple(clamp(c * 0.6 + 60) for c in mat.rgb)
+    for li, line in enumerate(lines):
+        tw = len(line) * 4 - 1
+        if tw > w:
+            continue
+        x0 = (w - tw) // 2
+        y0 = (h - th) // 2 + li * 6
+        for ci, ch in enumerate(line):
+            glyph = FONT.get(ch.upper() if ch.upper() in FONT and ch != "x" else ch, FONT[" "])
+            for gy in range(5):
+                for gx in range(3):
+                    if glyph[gy * 3 + gx] == "1":
+                        px[ux + x0 + ci * 4 + gx, uy + y0 + gy] = col + (255,)
 
 
 # --- surface patterns -------------------------------------------------------
@@ -441,6 +598,8 @@ def render(model, yaw, pitch, width=1200, height=800, bg=(236, 238, 242), ss=2):
     polys = []
     for c in model.cubes:
         for f in FACES:
+            if f not in c.uv:
+                continue
             tl, tr, bl = (rotate(p, c.rot) for p in face_corners(c, f))
             br = tuple(tr[i] + bl[i] - tl[i] for i in range(3))
             e1 = [tr[i] - tl[i] for i in range(3)]
@@ -469,39 +628,43 @@ def render(model, yaw, pitch, width=1200, height=800, bg=(236, 238, 242), ss=2):
     def scr(v):
         return (ox + v[0] * scale, oy - v[1] * scale)
 
-    img = Image.new("RGBA", (W, H), bg + (255,))
-    tex = model.texture
-    for _, c, f, vs, shade in polys:
+    import numpy as np
+    tex = np.asarray(model.texture.convert("RGBA")).astype(np.float32)
+    col = np.zeros((H, W, 3), np.float32)
+    col[:] = bg
+    zbuf = np.full((H, W), -1e9, np.float32)
+    for depth, c, f, vs, shade in polys:
         u0, v0, u1, v1 = c.uv[f]
         tw, th = u1 - u0, v1 - v0
-        crop = tex.crop((u0, v0, u1, v1))
-        r, g, b, a = crop.split()
-        lut = [min(255, int(i * shade)) for i in range(256)]
-        crop = Image.merge("RGBA", (r.point(lut), g.point(lut), b.point(lut), a))
-        p0, p1, p2, p3 = (scr(v) for v in vs)
-        xs = [p[0] for p in (p0, p1, p2, p3)]
-        ys = [p[1] for p in (p0, p1, p2, p3)]
-        bx0, by0 = int(math.floor(min(xs))), int(math.floor(min(ys)))
-        bx1, by1 = int(math.ceil(max(xs))) + 1, int(math.ceil(max(ys))) + 1
-        bw, bh = bx1 - bx0, by1 - by0
-        if bw <= 0 or bh <= 0:
-            continue
-        A = ((p1[0] - p0[0]) / tw, (p1[1] - p0[1]) / tw)
-        B = ((p2[0] - p0[0]) / th, (p2[1] - p0[1]) / th)
-        det = A[0] * B[1] - B[0] * A[1]
+        p0, p1, p2 = (scr(v) for v in vs[:3])
+        d0, d1, d2 = vs[0][2], vs[1][2], vs[2][2]
+        e1 = (p1[0] - p0[0], p1[1] - p0[1])
+        e2 = (p2[0] - p0[0], p2[1] - p0[1])
+        det = e1[0] * e2[1] - e2[0] * e1[1]
         if abs(det) < 1e-9:
             continue
-        ia, ib = B[1] / det, -B[0] / det
-        ic, id_ = -A[1] / det, A[0] / det
-        dx, dy = bx0 - p0[0], by0 - p0[1]
-        data = (ia, ib, ia * dx + ib * dy, ic, id_, ic * dx + id_ * dy)
-        patch = crop.transform((bw, bh), Image.AFFINE, data, resample=Image.NEAREST)
-        mask = Image.new("L", (bw, bh), 0)
-        ImageDraw.Draw(mask).polygon(
-            [(p[0] - bx0, p[1] - by0) for p in (p0, p1, p3, p2)], fill=255)
-        alpha = patch.split()[3]
-        mask = ImageChops.multiply(mask, alpha)
-        img.paste(patch, (bx0, by0), mask)
+        xs = [p0[0], p1[0], p2[0], p1[0] + e2[0]]
+        ys = [p0[1], p1[1], p2[1], p1[1] + e2[1]]
+        bx0, by0 = max(0, int(math.floor(min(xs)))), max(0, int(math.floor(min(ys))))
+        bx1, by1 = min(W, int(math.ceil(max(xs))) + 1), min(H, int(math.ceil(max(ys))) + 1)
+        if bx1 <= bx0 or by1 <= by0:
+            continue
+        gx, gy = np.meshgrid(np.arange(bx0, bx1) + 0.5 - p0[0], np.arange(by0, by1) + 0.5 - p0[1])
+        aa = (gx * e2[1] - gy * e2[0]) / det
+        bb = (gy * e1[0] - gx * e1[1]) / det
+        m_ = (aa >= 0) & (aa <= 1) & (bb >= 0) & (bb <= 1)
+        if not m_.any():
+            continue
+        dz = d0 + aa * (d1 - d0) + bb * (d2 - d0)
+        tu = np.clip((aa * tw).astype(int), 0, tw - 1) + u0
+        tv = np.clip((bb * th).astype(int), 0, th - 1) + v0
+        texel = tex[tv, tu]
+        zb = zbuf[by0:by1, bx0:bx1]
+        m_ &= (texel[..., 3] > 127) & (dz > zb + 1e-4)
+        zb[m_] = dz[m_]
+        cb = col[by0:by1, bx0:bx1]
+        cb[m_] = texel[..., :3][m_] * shade
+    img = Image.fromarray(np.clip(col, 0, 255).astype(np.uint8), "RGB")
     return img.resize((width, height), Image.LANCZOS)
 
 
