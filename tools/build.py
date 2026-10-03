@@ -115,13 +115,14 @@ GUN_MODULES = ["mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm"]
 def main():
     import importlib
     only = sys.argv[1:]
-    rp = os.path.join(ROOT, "resourcepack/assets", NS)
     gl = os.path.join(ROOT, "geckolib/assets", NS)
     dirs = {
-        "tex": os.path.join(rp, "textures/item"), "mdl": os.path.join(rp, "models/item"),
-        "items": os.path.join(rp, "items"),
-        "gl_geo": os.path.join(gl, "geo/item"), "gl_tex": os.path.join(gl, "textures/item"),
-        "gl_anim": os.path.join(gl, "animations/item"), "gl_mdl": os.path.join(gl, "models/item"),
+        # GeckoLib 5 (Minecraft 26.x) layout
+        "gl_geo": os.path.join(gl, "geckolib/models/item"),
+        "gl_anim": os.path.join(gl, "geckolib/animations/item"),
+        "gl_tex": os.path.join(gl, "textures/item"),
+        "gl_mdl": os.path.join(gl, "models/item"),
+        "gl_items": os.path.join(gl, "items"),
         "bb": os.path.join(ROOT, "blockbench"), "pv": os.path.join(ROOT, "previews"),
     }
     for d in dirs.values():
@@ -133,34 +134,33 @@ def main():
         mod = importlib.import_module(modname)
         m = mod.build()
         shift = m.center_yz()
-        m.check_java_limits()
         grip = [a + b for a, b in zip(mod.GRIP_POINT, shift)]
         m.build_texture()
         dp = mod.DISPLAY
         display = display_for(m, grip, dp["hand"], dp["fp"], dp["gui"], dp["tilt"], dp["push"])
         n = m.name
+        vanilla = m.java_legal()
 
-        # vanilla item model (resource pack, 1.21.4+ item definition)
-        m.texture.save(os.path.join(dirs["tex"], n + ".png"))
-        bbgen.save_json(m.java_json(NS, display), os.path.join(dirs["mdl"], n + ".json"))
-        bbgen.save_json({"model": {"type": "minecraft:model", "model": "%s:item/%s" % (NS, n)}},
-                        os.path.join(dirs["items"], n + ".json"))
-        # GeckoLib: geometry, texture, animations, item display json
+        # GeckoLib 5: geometry, animations, texture, base model (display), item definition
         bbgen.save_json(m.geo_json(), os.path.join(dirs["gl_geo"], n + ".geo.json"))
-        m.texture.save(os.path.join(dirs["gl_tex"], n + ".png"))
         bbgen.save_json(animation_json(n, mod.ANIMATIONS),
                         os.path.join(dirs["gl_anim"], n + ".animation.json"))
-        bbgen.save_json({"parent": "builtin/entity", "gui_light": "front", "display": display},
-                        os.path.join(dirs["gl_mdl"], n + ".json"))
-        # Blockbench project
-        rel = "../resourcepack/assets/%s/textures/item/%s.png" % (NS, n)
-        bbgen.save_json(m.bbmodel(display, rel), os.path.join(dirs["bb"], n + ".bbmodel"))
+        m.texture.save(os.path.join(dirs["gl_tex"], n + ".png"))
+        bbgen.save_json({"textures": {"particle": "%s:item/%s" % (NS, n)}, "gui_light": "front",
+                         "display": display}, os.path.join(dirs["gl_mdl"], n + ".json"))
+        bbgen.save_json({"model": {"type": "minecraft:special", "base": "%s:item/%s" % (NS, n),
+                                   "model": {"type": "geckolib:geckolib"}}},
+                        os.path.join(dirs["gl_items"], n + ".json"))
+
+        rel = "../geckolib/assets/%s/textures/item/%s.png" % (NS, n)
+        bbgen.save_json(m.bbmodel(display, rel, "java_block" if vanilla else "bedrock"),
+                        os.path.join(dirs["bb"], n + ".bbmodel"))
 
         views = {"right": (-90, 0), "left": (90, 0), "iso_right": (-130, 22), "iso_left": (50, 22)}
         for vname, (yaw, pitch) in views.items():
             bbgen.render(m, yaw, pitch).save(os.path.join(dirs["pv"], "%s_%s.png" % (n, vname)))
-        print("%-8s cubes=%3d texture=%dx%d bones=%s" % (n, len(m.cubes), m.size, m.size,
-                                                        ",".join(m.groups)))
+        print("%-8s cubes=%3d texture=%dx%d vanilla=%s bones=%s" % (
+            n, len(m.cubes), m.size, m.size, vanilla, ",".join(m.groups)))
 
 
 if __name__ == "__main__":

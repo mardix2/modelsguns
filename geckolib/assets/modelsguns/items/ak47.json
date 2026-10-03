@@ -1,0 +1,9 @@
+{
+ "model": {
+  "type": "minecraft:special",
+  "base": "modelsguns:item/ak47",
+  "model": {
+   "type": "geckolib:geckolib"
+  }
+ }
+}

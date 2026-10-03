@@ -1,0 +1,9 @@
+{
+ "model": {
+  "type": "minecraft:special",
+  "base": "modelsguns:item/glock17",
+  "model": {
+   "type": "geckolib:geckolib"
+  }
+ }
+}

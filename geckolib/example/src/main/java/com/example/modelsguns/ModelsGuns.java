@@ -1,10 +1,12 @@
 package com.example.modelsguns;
 
 import net.fabricmc.api.ModInitializer;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.util.Identifier;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.item.Item;
 
 public class ModelsGuns implements ModInitializer {
     public static final String MOD_ID = "modelsguns";
@@ -14,8 +16,8 @@ public class ModelsGuns implements ModInitializer {
     @Override
     public void onInitialize() {
         for (String id : GUNS) {
-            Registry.register(Registries.ITEM, new Identifier(MOD_ID, id),
-                    new GunItem(id, new Item.Settings().maxCount(1)));
+            ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(MOD_ID, id));
+            Registry.register(BuiltInRegistries.ITEM, key, new GunItem(id, new Item.Properties().setId(key).stacksTo(1)));
         }
     }
 }

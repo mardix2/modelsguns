@@ -1,5 +1,7 @@
 {
- "parent": "builtin/entity",
+ "textures": {
+  "particle": "modelsguns:item/mk18"
+ },
  "gui_light": "front",
  "display": {
   "thirdperson_righthand": {

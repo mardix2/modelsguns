@@ -1,0 +1,9 @@
+{
+ "model": {
+  "type": "minecraft:special",
+  "base": "modelsguns:item/mp5a5",
+  "model": {
+   "type": "geckolib:geckolib"
+  }
+ }
+}

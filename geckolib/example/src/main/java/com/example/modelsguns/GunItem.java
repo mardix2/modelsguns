@@ -1,85 +1,84 @@
 package com.example.modelsguns;
 
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
-import net.minecraft.client.render.item.BuiltinModelItemRenderer;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Hand;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.TypedActionResult;
-import net.minecraft.world.World;
-import software.bernie.geckolib.animatable.GeoItem;
-import software.bernie.geckolib.animatable.SingletonGeoAnimatable;
-import software.bernie.geckolib.animatable.client.RenderProvider;
-import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.core.animation.AnimatableManager;
-import software.bernie.geckolib.core.animation.AnimationController;
-import software.bernie.geckolib.core.animation.RawAnimation;
-import software.bernie.geckolib.core.object.PlayState;
-import software.bernie.geckolib.model.DefaultedItemGeoModel;
-import software.bernie.geckolib.renderer.GeoItemRenderer;
-import software.bernie.geckolib.util.GeckoLibUtil;
+import com.geckolib.animatable.GeoItem;
+import com.geckolib.animatable.client.GeoRenderProvider;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.model.DefaultedItemGeoModel;
+import com.geckolib.renderer.GeoItemRenderer;
+import com.geckolib.util.GeckoLibUtil;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Minimal GeckoLib 4 (Fabric 1.20.1, Yarn mappings) gun item.
+ * Gun item for Minecraft 26.2 + Fabric + GeckoLib 5 (Mojang names).
  *
- * Loads assets/modelsguns/geo/item/<id>.geo.json, textures/item/<id>.png and
- * animations/item/<id>.animation.json. Right click plays "shoot".
+ * GeckoLib loads:
+ *   assets/<modid>/geckolib/models/item/<id>.geo.json
+ *   assets/<modid>/geckolib/animations/item/<id>.animation.json
+ *   assets/<modid>/textures/item/<id>.png
+ * and the item is drawn through assets/<modid>/items/<id>.json
+ * ("minecraft:special" -> "geckolib:geckolib"), whose base model
+ * models/item/<id>.json holds the hand/GUI transforms.
+ *
+ * Right click plays the "shoot" animation.
  */
 public class GunItem extends Item implements GeoItem {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
-    private final Supplier<Object> renderProvider = GeoItem.makeRenderer(this);
     private final String gunId;
 
-    public GunItem(String gunId, Settings settings) {
-        super(settings);
+    public GunItem(String gunId, Properties properties) {
+        super(properties);
         this.gunId = gunId;
-        SingletonGeoAnimatable.registerSyncedAnimatable(this);
+        GeoItem.registerSyncedAnimatable(this);
     }
 
     @Override
-    public void createRenderer(Consumer<Object> consumer) {
-        consumer.accept(new RenderProvider() {
-            private GeoItemRenderer<GunItem> renderer;
+    public void createGeoRenderer(Consumer<GeoRenderProvider> consumer) {
+        consumer.accept(new GeoRenderProvider() {
+            private @Nullable GeoItemRenderer<GunItem> renderer;
 
             @Override
-            public BuiltinModelItemRenderer getCustomRenderer() {
-                if (renderer == null) {
-                    renderer = new GeoItemRenderer<>(
-                            new DefaultedItemGeoModel<>(new Identifier(ModelsGuns.MOD_ID, gunId)));
+            public GeoItemRenderer<?> getGeoItemRenderer() {
+                if (this.renderer == null) {
+                    this.renderer = new GeoItemRenderer<>(new DefaultedItemGeoModel<>(
+                            Identifier.fromNamespaceAndPath(ModelsGuns.MOD_ID, gunId)));
                 }
-                return renderer;
+                return this.renderer;
             }
         });
     }
 
     @Override
-    public Supplier<Object> getRenderProvider() {
-        return renderProvider;
-    }
-
-    @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        controllers.add(new AnimationController<>(this, "main", 0, state -> PlayState.STOP)
+        controllers.add(new AnimationController<GunItem>("main", 0, test -> PlayState.STOP)
                 .triggerableAnim("shoot", RawAnimation.begin().thenPlay("animation." + gunId + ".shoot"))
                 .triggerableAnim("reload", RawAnimation.begin().thenPlay("animation." + gunId + ".reload")));
     }
 
     @Override
     public AnimatableInstanceCache getAnimatableInstanceCache() {
-        return cache;
+        return this.cache;
     }
 
     @Override
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
-        ItemStack stack = user.getStackInHand(hand);
-        if (world instanceof ServerWorld serverWorld) {
-            triggerAnim(user, GeoItem.getOrAssignId(stack, serverWorld), "main", "shoot");
+    public InteractionResult use(Level level, Player player, InteractionHand hand) {
+        ItemStack stack = player.getItemInHand(hand);
+        if (level instanceof ServerLevel serverLevel) {
+            triggerAnim(player, GeoItem.getOrAssignId(stack, serverLevel), "main", "shoot");
         }
-        return TypedActionResult.success(stack, world.isClient());
+        return InteractionResult.SUCCESS;
     }
 }

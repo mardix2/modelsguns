@@ -23,6 +23,51 @@ FACES = ("north", "east", "south", "west", "up", "down")
 ALLOWED_ANGLES = (-45.0, -22.5, 0.0, 22.5, 45.0)
 
 
+def euler_matrix(e):
+    """Blockbench/Bedrock cube rotation: Euler XYZ degrees applied X, then Y,
+    then Z (three.js order 'ZYX'): M = Rz * Ry * Rx."""
+    rx, ry, rz = (math.radians(v) for v in e)
+    cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+    return [[cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+            [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+            [-sy, cy * sx, cy * cx]]
+
+
+def matrix_euler(m):
+    sy = -m[2][0]
+    sy = max(-1.0, min(1.0, sy))
+    ry = math.asin(sy)
+    if abs(sy) < 0.99999:
+        rx = math.atan2(m[2][1], m[2][2])
+        rz = math.atan2(m[1][0], m[0][0])
+    else:  # gimbal lock
+        rx = math.atan2(-m[1][2], m[1][1])
+        rz = 0.0
+    return tuple(round(math.degrees(v), 4) + 0.0 for v in (rx, ry, rz))
+
+
+def mat_mul3(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+
+
+def mat_vec(m, v):
+    return [sum(m[i][k] * v[k] for k in range(3)) for i in range(3)]
+
+
+def mat_t(m):
+    return [[m[j][i] for j in range(3)] for i in range(3)]
+
+
+def as_euler(rot):
+    """Accept ('x'|'y'|'z', angle, origin) or ('e', (rx, ry, rz), origin)."""
+    kind, val, origin = rot
+    if kind == "e":
+        return tuple(float(v) for v in val), list(origin)
+    e = [0.0, 0.0, 0.0]
+    e["xyz".index(kind)] = float(val)
+    return tuple(e), list(origin)
+
+
 class Material:
     def __init__(self, rgb, noise=6, alpha=255, edge=True):
         self.rgb = rgb
@@ -39,11 +84,10 @@ class Cube:
         self.mat = mat
         self.group = group
         self.pattern = pattern
-        # rot = (axis, angle, origin)
+        # rot is stored as ('e', (rx, ry, rz), origin); single-axis input allowed
         if rot is not None:
-            axis, angle, origin = rot
-            assert axis in "xyz" and float(angle) in ALLOWED_ANGLES, rot
-            rot = (axis, float(angle), list(origin))
+            e, origin = as_euler(rot)
+            rot = None if not any(e) else ("e", e, origin)
         self.rot = rot
         self.uv = {}
         self.text = {}  # face -> engraved text
@@ -52,7 +96,14 @@ class Cube:
         self.frm = [a + b for a, b in zip(self.frm, d)]
         self.to = [a + b for a, b in zip(self.to, d)]
         if self.rot:
-            self.rot = (self.rot[0], self.rot[1], [a + b for a, b in zip(self.rot[2], d)])
+            self.rot = ("e", self.rot[1], [a + b for a, b in zip(self.rot[2], d)])
+
+    def single_axis(self):
+        """(axis, angle) if rotated about one axis only, else None."""
+        if not self.rot:
+            return None
+        nz = [(a, v) for a, v in zip("xyz", self.rot[1]) if abs(v) > 1e-9]
+        return nz[0] if len(nz) == 1 else None
 
 
 class Model:
@@ -64,12 +115,48 @@ class Model:
         self.groups = []  # ordered group names (become GeckoLib bones)
         self.pivots = {}  # group -> pivot (animation centre)
         self.dynamic = set()  # animated groups: never cull faces across them
+        self.frames = []      # stack of (matrix, origin) applied to new cubes
+
+    class _Frame:
+        def __init__(self, model, rot):
+            self.model, self.rot = model, rot
+
+        def __enter__(self):
+            e, o = as_euler(self.rot)
+            self.model.frames.append((euler_matrix(e), o))
+            return self.model
+
+        def __exit__(self, *exc):
+            self.model.frames.pop()
+
+    def frame(self, rot):
+        """Context manager: every cube created inside is additionally rotated
+        by `rot` (axis/angle/origin or ('e', euler, origin)), so tilted parts
+        (grips, stocks, curved magazines) keep their own chamfers."""
+        return Model._Frame(self, rot)
+
+    def _apply_frames(self, c):
+        for fm, fo in reversed(self.frames):
+            if c.rot:
+                rm, oc = euler_matrix(c.rot[1]), c.rot[2]
+            else:
+                rm = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+                oc = [(c.frm[i] + c.to[i]) / 2 for i in range(3)]
+            r = mat_mul3(fm, rm)
+            moved = mat_vec(fm, [oc[i] - fo[i] for i in range(3)])
+            t = [moved[i] + fo[i] - oc[i] for i in range(3)]
+            c.frm = [c.frm[i] + t[i] for i in range(3)]
+            c.to = [c.to[i] + t[i] for i in range(3)]
+            e = matrix_euler(r)
+            c.rot = ("e", e, [oc[i] + t[i] for i in range(3)]) if any(abs(v) > 1e-9 for v in e) else None
 
     # -- building helpers -------------------------------------------------
     def box(self, name, x0, y0, z0, x1, y1, z1, mat, group, pattern=None, rot=None, text=None):
         if group not in self.groups:
             self.groups.append(group)
         c = Cube(name, (x0, y0, z0), (x1, y1, z1), mat, group, pattern, rot)
+        if self.frames:
+            self._apply_frames(c)
         if text:
             c.text = dict(text)
         self.cubes.append(c)
@@ -108,13 +195,17 @@ class Model:
         return self.box(name, *bl, *bh, m_, group, rot=(axis, -45.0 * s1 * s2, cpt))
 
     def bevel(self, name, x0, y0, z0, x1, y1, z1, b, mat, group, pattern=None, axis="z",
-              rot=None, text=None):
+              rot=None, text=None, edges=None):
         """Box whose four edges along `axis` are chamfered by b.
 
         Unrotated boxes get true 45 deg chamfers (two core boxes + four strips
         rotated about `axis`); the strips on the upper edges use a lighter
         tone, like a painted highlight.  Boxes that already carry a rotation
         fall back to a stepped bevel (Java allows one rotation per cube)."""
+        if rot is not None:
+            with self.frame(rot):
+                return self.bevel(name, x0, y0, z0, x1, y1, z1, b, mat, group, pattern, axis,
+                                  None, text, edges)
         lo, hi = [x0, y0, z0], [x1, y1, z1]
         i = "xyz".index(axis)
         a1, a2 = {0: (1, 2), 1: (2, 0), 2: (0, 1)}[i]
@@ -129,19 +220,37 @@ class Model:
         h2[i] -= e
         c = self.box(name, *l1, *h1, mat, group, pattern, rot, text)
         self.box(name + "_b", *l2, *h2, mat, group, pattern, rot, text)
-        if rot is not None or b < 0.04:
+        if b < 0.04:
             return c
+        if edges == "top":
+            edges = [(s1, s2) for s1 in (-1, 1) for s2 in (-1, 1)
+                     if (a1 == 1 and s1 > 0) or (a2 == 1 and s2 > 0)]
+        elif edges == "bottom":
+            edges = [(s1, s2) for s1 in (-1, 1) for s2 in (-1, 1)
+                     if (a1 == 1 and s1 < 0) or (a2 == 1 and s2 < 0)]
         for s1 in (-1, 1):
             for s2 in (-1, 1):
                 c1 = (lo[a1] + hi[a1]) / 2 + s1 * (hi[a1] - lo[a1]) / 2
                 c2 = (lo[a2] + hi[a2]) / 2 + s2 * (hi[a2] - lo[a2]) / 2
+                if edges is not None and (s1, s2) not in edges:
+                    # square corner: fill the notch instead of chamfering it
+                    fl, fh = list(lo), list(hi)
+                    fl[i] += 2 * e
+                    fh[i] -= 2 * e
+                    fl[a1], fh[a1] = sorted((c1, c1 - s1 * b))
+                    fl[a2], fh[a2] = sorted((c2, c2 - s2 * b))
+                    self.box("%s_sq%d%d" % (name, s1 + 1, s2 + 1), *fl, *fh, mat, group, pattern)
+                    continue
                 self.edge("%s_ch%d%d" % (name, s1 + 1, s2 + 1), axis, lo[i] + 2 * e, hi[i] - 2 * e,
                           c1, c2, s1, s2, b, mat, group)
         return c
 
     def pin_x(self, name, cx, cy, cz, r, x0, x1, mat, group, rot=None):
         """Round-ish pin head along X (square + square rotated 45 deg)."""
-        if rot is None:
+        if rot is not None:
+            with self.frame(rot):
+                return self.pin_x(name, cx, cy, cz, r, x0, x1, mat, group)
+        if True:
             self.box(name, x0, cy - r, cz - r, x1, cy + r, cz + r, mat, group)
             k = r * 0.82
             self.box(name + "_r", x0 + 0.005, cy - k, cz - k, x1 - 0.005, cy + k, cz + k, mat, group,
@@ -218,6 +327,22 @@ class Model:
         if pivots:
             self.pivots.update({k: list(v) for k, v in pivots.items()})
 
+    def chain(self, top, seg_len, angles, axis="x"):
+        """Frames for a curved part (e.g. a magazine) built from segments.
+
+        top = (y, z) of the first segment's top centre; each segment hangs
+        seg_len below its pivot and is rotated by its cumulative angle about X
+        (positive = lower end swings forward, -Z).  Returns a list of
+        (rot, (y_top, z_centre)) for use with frame(); build each segment in
+        its own unrotated space with the top at y_top centred on z_centre."""
+        out = []
+        y, z = top
+        for a in angles:
+            out.append((("x", a, (8.0, y, z)), (y, z)))
+            r = math.radians(a)
+            y, z = y - seg_len * math.cos(r), z - seg_len * math.sin(r)
+        return out
+
     def bounds(self):
         pts = [p for c in self.cubes for p in world_corners(c)]
         lo = [min(p[i] for p in pts) for i in range(3)]
@@ -276,8 +401,10 @@ class Model:
 
         def inside(o, p):
             if o.rot:
-                ax, ang, org = o.rot
-                p = rotate(p, (ax, -ang, org))
+                m_ = mat_t(euler_matrix(o.rot[1]))
+                org = o.rot[2]
+                q = mat_vec(m_, [p[k] - org[k] for k in range(3)])
+                p = [q[k] + org[k] for k in range(3)]
             return all(o.frm[i] - 1e-4 <= p[i] <= o.to[i] + 1e-4 for i in range(3))
 
         hidden = set()
@@ -339,7 +466,8 @@ class Model:
         for c in self.cubes:
             el = {"name": c.name, "from": rnd(c.frm), "to": rnd(c.to)}
             if c.rot:
-                el["rotation"] = {"angle": c.rot[1], "axis": c.rot[0], "origin": rnd(c.rot[2])}
+                ax, ang = c.single_axis()
+                el["rotation"] = {"angle": ang, "axis": ax, "origin": rnd(c.rot[2])}
             el["faces"] = {f: {"uv": rnd([v * s for v in c.uv[f]]), "texture": "#0"}
                            for f in FACES if f in c.uv}
             elements.append(el)
@@ -374,27 +502,25 @@ class Model:
                 size = [c.to[i] - c.frm[i] for i in range(3)]
                 cube = {"origin": rnd([8 - c.to[0], c.frm[1], c.frm[2] - 8]), "size": rnd(size)}
                 if c.rot:
-                    axis, ang, o = c.rot
-                    r = [0.0, 0.0, 0.0]
-                    k = "xyz".index(axis)
-                    r[k] = -ang if k < 2 else ang
+                    ex, ey, ez = c.rot[1]
+                    o = c.rot[2]
                     cube["pivot"] = rnd([8 - o[0], o[1], o[2] - 8])
-                    cube["rotation"] = rnd(r)
+                    cube["rotation"] = rnd([-ex, -ey, ez])
                 uv = {}
                 for f in FACES:
                     if f not in c.uv:
                         continue
                     u0, v0, u1, v1 = c.uv[f]
-                    if f == "down":
-                        uv[f] = {"uv": [u0, v1], "uv_size": [u1 - u0, v0 - v1]}
+                    if f in ("up", "down"):
+                        # GeckoLib/Bedrock read up/down faces rotated 180 deg
+                        # (see GeckoLib VertexSet.quadUp/quadDown), so both
+                        # axes are flipped, exactly as Blockbench exports them
+                        uv[f] = {"uv": [u1, v1], "uv_size": [u0 - u1, v0 - v1]}
                     else:
                         uv[f] = {"uv": [u0, v0], "uv_size": [u1 - u0, v1 - v0]}
                 cube["uv"] = uv
                 cubes.append(cube)
-            p = self.pivots.get(g)
-            if p is None:
-                cs = [c for c in self.cubes if c.group == g]
-                p = [(min(c.frm[i] for c in cs) + max(c.to[i] for c in cs)) / 2 for i in range(3)]
+            p = self.group_pivot(g)
             bones.append({"name": g, "parent": "root", "pivot": rnd([8 - p[0], p[1], p[2] - 8]),
                           "cubes": cubes})
         width = max(hi[0] - lo[0], hi[2] - lo[2]) / 16 + 1
@@ -412,10 +538,22 @@ class Model:
             }],
         }
 
-    def java_legal(self):
-        return all(not c.rot or c.rot[1] in ALLOWED_ANGLES for c in self.cubes)
+    def group_pivot(self, g):
+        p = self.pivots.get(g)
+        if p is None:
+            cs = [c for c in self.cubes if c.group == g]
+            p = [(min(c.frm[i] for c in cs) + max(c.to[i] for c in cs)) / 2 for i in range(3)]
+        return p
 
-    def bbmodel(self, display, texture_rel_path):
+    def java_legal(self):
+        for c in self.cubes:
+            if c.rot:
+                sa = c.single_axis()
+                if not sa or round(sa[1], 4) not in ALLOWED_ANGLES:
+                    return False
+        return True
+
+    def bbmodel(self, display, texture_rel_path, fmt="java_block"):
         def uid(*parts):
             return str(uuid.uuid5(uuid.NAMESPACE_URL, "modelsguns/" + "/".join(map(str, parts))))
 
@@ -424,7 +562,7 @@ class Model:
             rot = [0, 0, 0]
             origin = [8, 8, 8]
             if c.rot:
-                rot["xyz".index(c.rot[0])] = c.rot[1]
+                rot = list(c.rot[1])
                 origin = c.rot[2]
             elements.append({
                 "name": c.name, "box_uv": False, "rescale": False, "locked": False,
@@ -438,7 +576,7 @@ class Model:
             })
         for gi, g in enumerate(self.groups):
             outliner.append({
-                "name": g, "origin": [8, 8, 8], "color": gi % 8,
+                "name": g, "origin": rnd(self.group_pivot(g)), "color": gi % 8,
                 "uuid": uid(self.name, "group", g), "export": True, "mirror_uv": False,
                 "isOpen": False, "locked": False, "visibility": True, "autouv": 0,
                 "children": [e["uuid"] for e, c in zip(elements, self.cubes) if c.group == g],
@@ -447,7 +585,8 @@ class Model:
         self.texture.save(buf, "PNG")
         src = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
         return {
-            "meta": {"format_version": "4.10", "model_format": "java_block", "box_uv": False},
+            "meta": {"format_version": "4.10", "model_format": fmt, "box_uv": False},
+            "model_identifier": self.name,
             "name": self.name,
             "parent": "",
             "ambientocclusion": True,
@@ -702,7 +841,20 @@ def pat_ribs_z(p, f, u, v, w, h, c, rng):
     return 0
 
 
+def pat_brushed(p, f, u, v, w, h, c, rng):
+    # brushed metal: fine streaks running along the gun
+    k = p[1] if f in ("east", "west", "north", "south") else p[0]
+    return int(5 * math.sin(k * 53.0) + 3 * math.sin(k * 131.0 + 1.7))
+
+
+def pat_checker(p, f, u, v, w, h, c, rng):
+    # fine diamond checkering for grip panels
+    return -16 if (u + v) % 3 == 0 or (u - v) % 3 == 0 else 4
+
+
 PATTERNS = {
+    "brushed": pat_brushed,
+    "checker": pat_checker,
     "wood": pat_wood,
     "ribs_z": pat_ribs_z,
     "rail": pat_rail(0.75, 0.25),
@@ -726,17 +878,9 @@ PATTERNS = {
 def rotate(p, rot):
     if not rot:
         return p
-    axis, ang, o = rot
-    a = math.radians(ang)
-    ca, sa = math.cos(a), math.sin(a)
-    x, y, z = p[0] - o[0], p[1] - o[1], p[2] - o[2]
-    if axis == "x":
-        y, z = y * ca - z * sa, y * sa + z * ca
-    elif axis == "y":
-        x, z = x * ca + z * sa, -x * sa + z * ca
-    else:
-        x, y = x * ca - y * sa, x * sa + y * ca
-    return (x + o[0], y + o[1], z + o[2])
+    e, o = as_euler(rot)
+    q = mat_vec(euler_matrix(e), [p[i] - o[i] for i in range(3)])
+    return (q[0] + o[0], q[1] + o[1], q[2] + o[2])
 
 
 def world_corners(c):
