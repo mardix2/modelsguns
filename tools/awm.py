@@ -6,6 +6,7 @@ Real proportions: 1230 mm overall, 686 mm barrel.
 Scale: 1 unit ~= 20 mm.  Muzzle points north (-Z), bore axis x=8, y=10.
 """
 
+import anims
 from bbgen import Material, Model
 
 MATERIALS = {
@@ -167,18 +168,40 @@ GRIP_POINT = (8.0, 4.8, 13.2)
 
 DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.22, "tilt": 30, "push": -4.0}
 
-ANIMATIONS = {
-    "shoot": (0.1, {
-        "trigger": {"rotation": {0.0: [0, 0, 0], 0.02: [-10, 0, 0], 0.08: [0, 0, 0]}},
-    }),
-    # bolt up, back, forward, down
-    "bolt": (1.1, {
-        "bolt": {
-            "rotation": {0.0: [0, 0, 0], 0.15: [0, 0, 60], 0.85: [0, 0, 60], 1.0: [0, 0, 0]},
-            "position": {0.15: [0, 0, 0], 0.4: [0, 0, 5.5], 0.55: [0, 0, 5.5], 0.85: [0, 0, 0]}},
-    }),
-    "reload": (1.8, {
-        "magazine": {"position": {0.0: [0, 0, 0], 0.3: [0, -2, 0], 0.6: [0, -12, 0],
-                                  0.61: [0, -12, 0], 1.1: [0, -2, 0], 1.3: [0, 0, 0]}},
-    }),
+ANIM = {
+    "trigger": True, "trigger_angle": 10,
+    "mag_dir": [0, -1, 0], "mag_far": 14, "mag_gap": 0.45, "press_check": False,
+    "recoil": 3.4, "recoil_time": 0.45, "shot_time": 0.5,
+    "reload_time": 2.0, "reload_empty_time": 3.1,
+    "reload_tilt": [4, 10, -22], "reload_lift": [-1.0, 1.0, -1.5],
 }
+
+
+def _bolt(a, t0):
+    """Lift, pull, push, lock."""
+    a.rot("bolt", t0, anims.ZERO)
+    a.rot("bolt", t0 + 0.15, [0, 0, 62], "easeOutQuad")
+    a.pos("bolt", t0 + 0.15, anims.ZERO)
+    a.pos("bolt", t0 + 0.38, [0, 0, 6.0], "easeOutQuad")
+    a.pos("bolt", t0 + 0.48, [0, 0, 6.0])
+    a.pos("bolt", t0 + 0.7, anims.ZERO, "easeInQuad")
+    a.rot("bolt", t0 + 0.7, [0, 0, 62])
+    a.rot("bolt", t0 + 0.82, anims.ZERO, "easeInQuad")
+    a.track("root", "rotation", [(t0, anims.ZERO), (t0 + 0.15, [2, 3, -8], "easeInOutSine"),
+                                 (t0 + 0.7, [1, 3, -8], "easeInOutSine"), (t0 + 0.95, anims.ZERO, "easeInOutSine")])
+
+
+def _bolt_only(c):
+    a = anims.Anim(1.0)
+    _bolt(a, 0.0)
+    return a
+
+
+def _reload_empty(c):
+    a = anims.reload(dict(c, reload_time=2.0))
+    a.length = c["reload_empty_time"]
+    _bolt(a, 2.0)
+    return a
+
+
+ANIMATIONS = anims.build(ANIM, {"bolt": _bolt_only, "reload_empty": _reload_empty})

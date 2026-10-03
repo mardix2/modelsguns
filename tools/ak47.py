@@ -4,6 +4,7 @@ Real proportions (880 mm overall, 415 mm barrel).  Scale: 1 unit ~= 19 mm.
 Muzzle points north (-Z), bore axis at x=8, y=10.
 """
 
+import anims
 from bbgen import Material, Model
 
 MATERIALS = {
@@ -275,18 +276,14 @@ GRIP_POINT = (8.0, 5.6, 15.0)
 
 DISPLAY = {"hand": 0.38, "fp": 0.4, "gui": 0.31, "tilt": 30, "push": -2.5}
 
-ANIMATIONS = {
-    "shoot": (0.1, {
-        "bolt": {"position": {0.0: [0, 0, 0], 0.025: [0, 0, 3.6], 0.1: [0, 0, 0]}},
-        "trigger": {"rotation": {0.0: [0, 0, 0], 0.02: [-12, 0, 0], 0.08: [0, 0, 0]}},
-    }),
-    # rock-in magazine change, then rack the charging handle
-    "reload": (2.4, {
-        "magazine": {
-            "rotation": {0.0: [0, 0, 0], 0.25: [22, 0, 0], 0.7: [22, 0, 0], 1.15: [22, 0, 0],
-                         1.4: [0, 0, 0]},
-            "position": {0.0: [0, 0, 0], 0.25: [0, -0.6, -0.4], 0.65: [0, -18, -2.0], 0.66: [0, -18, -2.0],
-                         1.15: [0, -0.6, -0.4], 1.4: [0, 0, 0]}},
-        "bolt": {"position": {1.75: [0, 0, 0], 1.9: [0, 0, 4.2], 2.05: [0, 0, 0]}},
-    }),
+ANIM = {
+    "action": "bolt", "travel": 3.8, "locks_back": False,
+    "trigger": True, "trigger_angle": 12,
+    "selector": ("selector", [16, 0, 0]),
+    "mag_rock": 20, "mag_dir": [0, -1, -0.1], "mag_far": 20, "mag_gap": 0.55,
+    "recoil": 0.8, "recoil_time": 0.12, "shot_time": 0.1, "cycle_back": 0.025, "cycle_fwd": 0.05,
+    "reload_time": 2.3, "reload_empty_time": 2.9,
+    "reload_tilt": [6, 12, -26], "reload_lift": [-1.0, 1.2, -1.5],
 }
+
+ANIMATIONS = anims.build(ANIM)

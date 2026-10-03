@@ -116,6 +116,7 @@ class Model:
         self.pivots = {}  # group -> pivot (animation centre)
         self.dynamic = set()  # animated groups: never cull faces across them
         self.frames = []      # stack of (matrix, origin) applied to new cubes
+        self.root_pivot = [8, 8, 8]  # pivot of the "root" bone (the grip)
 
     class _Frame:
         def __init__(self, model, rot):
@@ -493,7 +494,8 @@ class Model:
         x' = 8 - x (Bedrock mirrors X), y' = y, z' = z - 8.  Cube rotations
         flip sign on X and Y, as Blockbench does on export."""
         lo, hi = self.bounds()
-        bones = [{"name": "root", "pivot": [0, 0, 0]}]
+        rp = self.root_pivot
+        bones = [{"name": "root", "pivot": rnd([8 - rp[0], rp[1], rp[2] - 8])}]
         for g in self.groups:
             cubes = []
             for c in self.cubes:
@@ -581,6 +583,12 @@ class Model:
                 "isOpen": False, "locked": False, "visibility": True, "autouv": 0,
                 "children": [e["uuid"] for e, c in zip(elements, self.cubes) if c.group == g],
             })
+        outliner = [{
+            "name": "root", "origin": rnd(self.root_pivot), "color": 0,
+            "uuid": uid(self.name, "group", "root"), "export": True, "mirror_uv": False,
+            "isOpen": True, "locked": False, "visibility": True, "autouv": 0,
+            "children": outliner,
+        }]
         buf = io.BytesIO()
         self.texture.save(buf, "PNG")
         src = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()

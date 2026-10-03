@@ -7,6 +7,7 @@ Magpul-style grip, CTR stock and a curved 30 rd PMAG.
 Scale: 1 model unit ~= 15.6 mm.  Muzzle points north (-Z), bore axis at x=8.
 """
 
+import anims
 from bbgen import Material, Model
 
 MATERIALS = {
@@ -343,11 +344,14 @@ def build():
         B("mag_round_r_%d" % i, 8.87, y, 9.57, 8.89, y + 0.25, 9.73, "brass", g)
 
     m.regroup({"bcg_": "bolt", "ch_": "charging_handle", "trigger_": "trigger",
-               "dust_": "dust_cover"},
+               "dust_": "dust_cover", "selector_hub": "selector", "selector_lever": "selector",
+               "selector_tip": "selector", "bolt_catch": "bolt_catch", "mag_release": "mag_release"},
               pivots={"trigger": (8, 8.3, 11.45), "dust_cover": (8.87, 9.4, 9.75),
                       "magazine": (8, 6.0, 8.6), "bolt": (8, 10, 9.7),
-                      "charging_handle": (8, 11.0, 16.2)})
-    m.dynamic = {"bolt", "charging_handle", "trigger", "dust_cover", "magazine"}
+                      "charging_handle": (8, 11.0, 16.2), "selector": (7.1, 8.45, 14.1),
+                      "bolt_catch": (7.1, 8.2, 10.1), "mag_release": (8.9, 7.8, 10.6)})
+    m.dynamic = {"bolt", "charging_handle", "trigger", "dust_cover", "magazine", "selector",
+                 "bolt_catch", "mag_release"}
     return m
 
 
@@ -356,16 +360,25 @@ GRIP_POINT = (8.0, 5.5, 14.4)
 
 DISPLAY = {"hand": 0.4, "fp": 0.42, "gui": 0.34, "tilt": 30, "push": -2.0}
 
-# keyframes in model space (units = model pixels, degrees)
-ANIMATIONS = {
-    "shoot": (0.12, {
-        "bolt": {"position": {0.0: [0, 0, 0], 0.03: [0, 0, 2.2], 0.12: [0, 0, 0]}},
-        "trigger": {"rotation": {0.0: [0, 0, 0], 0.02: [-12, 0, 0], 0.1: [0, 0, 0]}},
-    }),
-    "reload": (2.0, {
-        "magazine": {"position": {0.0: [0, 0, 0], 0.3: [0, -3, 0], 0.6: [0, -14, 0],
-                                  0.61: [0, -14, 0], 1.1: [0, -3, 0], 1.3: [0, 0, 0]}},
-        "charging_handle": {"position": {1.45: [0, 0, 0], 1.6: [0, 0, 2.8], 1.75: [0, 0, 0]}},
-        "bolt": {"position": {1.45: [0, 0, 0], 1.6: [0, 0, 2.8], 1.75: [0, 0, 0]}},
-    }),
+ANIM = {
+    "action": "bolt", "travel": 2.6, "locks_back": True,
+    "charging": ("charging_handle", 2.8),
+    "trigger": True, "trigger_angle": 12,
+    "stop": {"bone": "bolt_catch", "rot": [-8, 0, 0]},
+    "release": ("mag_release", [-0.18, 0, 0]),
+    "selector": ("selector", [90, 0, 0]),
+    "mag_far": 18, "recoil": 0.55, "recoil_time": 0.12, "shot_time": 0.1,
+    "reload_time": 2.1, "reload_empty_time": 2.6,
 }
+
+
+def _shoot(c):
+    a = anims.shoot(c)
+    # brass deflector side: dust cover bounces on its hinge
+    a.rot("dust_cover", 0.0, [0, 0, 0])
+    a.rot("dust_cover", 0.03, [0, 0, -8], "easeOutQuad")
+    a.rot("dust_cover", 0.1, [0, 0, 0], "easeOutBounce")
+    return a
+
+
+ANIMATIONS = anims.build(ANIM, {"shoot": _shoot})

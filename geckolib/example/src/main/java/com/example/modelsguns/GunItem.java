@@ -33,15 +33,21 @@ import org.jspecify.annotations.Nullable;
  * ("minecraft:special" -> "geckolib:geckolib"), whose base model
  * models/item/<id>.json holds the hand/GUI transforms.
  *
- * Right click plays the "shoot" animation.
+ * Two controllers:
+ *   "state"  loops animation.<id>.idle (swap it for sprint / idle_empty from your own logic),
+ *   "action" holds every one-shot animation of the gun as a triggerable animation
+ *            (shoot, shoot_last, reload, reload_empty, inspect, draw, holster, ...).
+ * Right click plays "shoot".
  */
 public class GunItem extends Item implements GeoItem {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
     private final String gunId;
+    private final String[] actions;
 
-    public GunItem(String gunId, Properties properties) {
+    public GunItem(String gunId, String[] actions, Properties properties) {
         super(properties);
         this.gunId = gunId;
+        this.actions = actions;
         GeoItem.registerSyncedAnimatable(this);
     }
 
@@ -63,9 +69,14 @@ public class GunItem extends Item implements GeoItem {
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        controllers.add(new AnimationController<GunItem>("main", 0, test -> PlayState.STOP)
-                .triggerableAnim("shoot", RawAnimation.begin().thenPlay("animation." + gunId + ".shoot"))
-                .triggerableAnim("reload", RawAnimation.begin().thenPlay("animation." + gunId + ".reload")));
+        final RawAnimation idle = RawAnimation.begin().thenLoop("animation." + gunId + ".idle");
+        controllers.add(new AnimationController<GunItem>("state", 4, test -> test.setAndContinue(idle)));
+
+        final AnimationController<GunItem> action = new AnimationController<>("action", 0, test -> PlayState.STOP);
+        for (String name : this.actions) {
+            action.triggerableAnim(name, RawAnimation.begin().thenPlay("animation." + gunId + "." + name));
+        }
+        controllers.add(action);
     }
 
     @Override
@@ -77,7 +88,7 @@ public class GunItem extends Item implements GeoItem {
     public InteractionResult use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
         if (level instanceof ServerLevel serverLevel) {
-            triggerAnim(player, GeoItem.getOrAssignId(stack, serverLevel), "main", "shoot");
+            triggerAnim(player, GeoItem.getOrAssignId(stack, serverLevel), "action", "shoot");
         }
         return InteractionResult.SUCCESS;
     }

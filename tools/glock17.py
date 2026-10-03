@@ -3,6 +3,7 @@
 Scale: 1 model unit ~= 7 mm.  Muzzle points north (-Z), bore axis at x=8.
 """
 
+import anims
 from bbgen import Material, Model
 
 MATERIALS = {
@@ -201,10 +202,12 @@ def build():
     B("mag_base_lip_b", 6.6, 0.95, 21.0, 9.4, 1.45, 21.35, "frame", g, rot=gr)
     B("mag_base_hole", 7.85, 0.88, 17.5, 8.15, 0.9, 17.8, "bore", g, rot=gr)
 
-    m.regroup({"mag_": "magazine", "trigger_shoe": "trigger", "trigger_safety": "trigger"},
+    m.regroup({"mag_": "magazine", "trigger_shoe": "trigger", "trigger_safety": "trigger",
+               "slide_stop_notch": "slide", "slide_stop": "slide_stop", "catch_mag": "mag_catch"},
               pivots={"trigger": (8, 13.4, 11.8), "magazine": (8, 13.0, 18.4),
-                      "slide": (8, 17, 13), "barrel": (8, 16.6, 10)})
-    m.dynamic = {"slide", "barrel", "magazine", "trigger"}
+                      "slide": (8, 17, 13), "barrel": (8, 16.6, 12.0),
+                      "slide_stop": (6.2, 14.9, 15.2), "mag_catch": (8, 12.85, 15.4)})
+    m.dynamic = {"slide", "barrel", "magazine", "trigger", "slide_stop", "mag_catch"}
     return m
 
 
@@ -212,18 +215,17 @@ GRIP_POINT = (8.0, 9.0, 20.5)
 
 DISPLAY = {"hand": 0.28, "fp": 0.32, "gui": 0.52, "tilt": 0, "push": 0.0}
 
-# magazine leaves along the 22.5 deg grip axis: (0, -cos, +sin)
-_D = (0.924, 0.383)
-ANIMATIONS = {
-    "shoot": (0.15, {
-        "slide": {"position": {0.0: [0, 0, 0], 0.035: [0, 0, 3.2], 0.15: [0, 0, 0]}},
-        "barrel": {"position": {0.0: [0, 0, 0], 0.035: [0, -0.25, 1.0], 0.15: [0, 0, 0]}},
-        "trigger": {"rotation": {0.0: [0, 0, 0], 0.02: [-14, 0, 0], 0.12: [0, 0, 0]}},
-    }),
-    "reload": (1.6, {
-        "magazine": {"position": {0.0: [0, 0, 0], 0.25: [0, -4 * _D[0], 4 * _D[1]],
-                                  0.5: [0, -16 * _D[0], 16 * _D[1]], 0.51: [0, -16 * _D[0], 16 * _D[1]],
-                                  0.95: [0, -4 * _D[0], 4 * _D[1]], 1.1: [0, 0, 0]}},
-        "slide": {"position": {1.2: [0, 0, 0], 1.32: [0, 0, 3.2], 1.45: [0, 0, 0]}},
-    }),
+ANIM = {
+    "action": "slide", "travel": 3.4, "locks_back": True,
+    # barrel unlocks: moves back with the slide and its breech drops
+    "followers": {"barrel": {"pos": [0, -0.15, 1.1], "rot": [-4, 0, 0]}},
+    "stop": {"bone": "slide_stop", "rot": [7, 0, 0]},
+    "release": ("mag_catch", [0.25, 0, 0]),
+    "trigger": True, "trigger_angle": 16,
+    "mag_dir": [0, -0.924, 0.383], "mag_far": 18, "mag_gap": 0.4,
+    "recoil": 1.6, "recoil_time": 0.24, "shot_time": 0.25, "cycle_back": 0.035, "cycle_fwd": 0.08,
+    "reload_time": 1.6, "reload_empty_time": 2.0,
+    "reload_tilt": [10, 18, -32], "reload_lift": [-1.5, 1.5, -1.5],
 }
+
+ANIMATIONS = anims.build(ANIM)

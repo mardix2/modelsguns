@@ -5,6 +5,7 @@ Real proportions: 550 mm collapsed, 225 mm barrel, 50 mm handguard.
 Scale: 1 unit ~= 11 mm.  Muzzle points north (-Z), bore axis x=8, y=10.
 """
 
+import anims
 from bbgen import Material, Model
 
 MATERIALS = {
@@ -216,15 +217,32 @@ GRIP_POINT = (8.0, 3.0, 16.0)
 
 DISPLAY = {"hand": 0.34, "fp": 0.36, "gui": 0.29, "tilt": 25, "push": -1.5}
 
-ANIMATIONS = {
-    "shoot": (0.09, {
-        "trigger": {"rotation": {0.0: [0, 0, 0], 0.02: [-12, 0, 0], 0.08: [0, 0, 0]}},
-    }),
-    # magazine change and the "HK slap"
-    "reload": (2.6, {
-        "cocking_handle": {"position": {0.0: [0, 0, 0], 0.15: [0, 0, 10.6], 0.22: [0, 0.4, 10.6],
-                                        1.9: [0, 0.4, 10.6], 2.0: [0, 0, 0]}},
-        "magazine": {"position": {0.4: [0, 0, 0], 0.65: [0, -3, 0], 0.95: [0, -20, 0],
-                                  0.96: [0, -20, 0], 1.45: [0, -3, 0], 1.65: [0, 0, 0]}},
-    }),
+ANIM = {
+    "trigger": True, "trigger_angle": 12,
+    "charging": ("cocking_handle", 10.6), "charging_moves_action": False,
+    "mag_dir": [0, -1, 0], "mag_far": 22, "mag_gap": 0.5,
+    "recoil": 0.45, "recoil_time": 0.09, "shot_time": 0.08,
+    "reload_time": 2.0, "reload_empty_time": 3.0,
+    "reload_tilt": [6, 12, -24], "reload_lift": [-1.0, 1.0, -1.5],
 }
+
+
+def _reload_empty(c):
+    """The HK slap: handle locked back first, magazine swapped, then slapped home."""
+    a = anims.Anim(c["reload_empty_time"])
+    a.pos("cocking_handle", 0.0, anims.ZERO)
+    a.pos("cocking_handle", 0.25, [0, 0, 10.6], "easeInOutSine")
+    a.pos("cocking_handle", 0.33, [0, 0.45, 10.6], "easeOutQuad")       # flicked into the notch
+    seat = anims._mag_swap(a, c, 0.55)
+    t = seat + 0.45
+    a.pos("cocking_handle", t, [0, 0.45, 10.6])
+    a.pos("cocking_handle", t + 0.05, [0, 0, 10.4], "easeOutQuad")
+    a.pos("cocking_handle", t + 0.12, anims.ZERO, "easeInCubic")
+    anims._tilt(a, c, 0.4, t + 0.2, c["reload_empty_time"])
+    a.track("root", "position", [(t + 0.1, c["reload_lift"]),
+                                 (t + 0.15, anims.add(c["reload_lift"], [0.4, 0.3, 0.6]), "easeOutQuad"),
+                                 (t + 0.4, c["reload_lift"], "easeInOutSine")])
+    return a
+
+
+ANIMATIONS = anims.build(ANIM, {"reload_empty": _reload_empty})

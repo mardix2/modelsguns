@@ -89,23 +89,33 @@ def display_for(model, grip, hand_scale, fp_scale, gui_scale, gui_tilt, fp_push)
 
 
 def animation_json(name, anims):
-    """Animations are written in model (Java) space; Bedrock mirrors X, so
-    X positions and X/Y rotations flip sign."""
+    """Animations are authored in model (Java) space; Bedrock mirrors X, so
+    X positions and X/Y rotations flip sign (GeckoLib flips them back)."""
     out = {}
-    for anim, (length, bones) in anims.items():
+    for anim, spec in anims.items():
+        if isinstance(spec, tuple):          # legacy (length, bones)
+            spec = {"length": spec[0], "loop": False, "bones": spec[1]}
         bb = {}
-        for bone, chans in bones.items():
+        for bone, chans in spec["bones"].items():
             bb[bone] = {}
             for chan, keys in chans.items():
                 conv = {}
                 for t, v in sorted(keys.items()):
+                    ease = None
+                    if isinstance(v, tuple):
+                        v, ease = v
                     if chan == "position":
                         v = [-v[0], v[1], v[2]]
                     else:
                         v = [-v[0], -v[1], v[2]]
-                    conv["%g" % t] = [clean(x) for x in v]
+                    v = [clean(x) for x in v]
+                    conv["%g" % t] = {"vector": v, "easing": ease} if ease else v
                 bb[bone][chan] = conv
-        out["animation.%s.%s" % (name, anim)] = {"animation_length": length, "bones": bb}
+        entry = {"animation_length": spec["length"]}
+        if spec.get("loop"):
+            entry["loop"] = True
+        entry["bones"] = bb
+        out["animation.%s.%s" % (name, anim)] = entry
     return {"format_version": "1.8.0", "animations": out}
 
 
@@ -135,6 +145,7 @@ def main():
         m = mod.build()
         shift = m.center_yz()
         grip = [a + b for a, b in zip(mod.GRIP_POINT, shift)]
+        m.root_pivot = grip
         m.build_texture()
         dp = mod.DISPLAY
         display = display_for(m, grip, dp["hand"], dp["fp"], dp["gui"], dp["tilt"], dp["push"])

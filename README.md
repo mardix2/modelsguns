@@ -8,16 +8,52 @@
 
 | Ствол | id | Кубов | Подвижные кости | Анимации |
 |---|---|---|---|---|
-| MK18 Mod 1 | `mk18` | 511 | bolt, charging_handle, trigger, dust_cover, magazine | shoot, reload |
-| Glock 17 Gen 5 | `glock17` | 209 | slide, barrel, trigger, magazine | shoot, reload |
-| AK-47 Type 3 | `ak47` | 555 | bolt, trigger, selector, top_cover, magazine | shoot, reload |
-| Desert Eagle .50 AE | `deagle` | 276 | slide, hammer, trigger, magazine | shoot, reload |
-| H&K MP5A5 | `mp5a5` | 549 | cocking_handle, trigger, magazine | shoot, reload |
-| Remington 870 Wingmaster | `m870` | 276 | pump, trigger, shell | shoot, pump, reload |
-| AI AWM .338 | `awm` | 406 | bolt, trigger, magazine | shoot, bolt, reload |
+| MK18 Mod 1 | `mk18` | 511 | bolt, charging_handle, trigger, dust_cover, magazine, bolt_catch, mag_release, selector | см. ниже |
+| Glock 17 Gen 5 | `glock17` | 209 | slide, barrel, trigger, magazine, slide_stop, mag_catch | см. ниже |
+| AK-47 Type 3 | `ak47` | 555 | bolt, trigger, selector, top_cover, magazine | см. ниже |
+| Desert Eagle .50 AE | `deagle` | 276 | slide, hammer, trigger, magazine | см. ниже |
+| H&K MP5A5 | `mp5a5` | 549 | cocking_handle, trigger, magazine | см. ниже |
+| Remington 870 Wingmaster | `m870` | 276 | pump, trigger, shell | см. ниже |
+| AI AWM .338 | `awm` | 406 | bolt, trigger, magazine | см. ниже |
 
 Только само оружие: без прицелов, фонарей и прочего обвеса (у AWM — только
 планка под оптику). Пропорции взяты из реальных размеров (длина, ствол, высота).
+
+## Анимации
+
+Только оружие, без рук. Плавность задана через `easing` GeckoLib, всё движение
+ствола целиком идёт через кость `root`, которая вращается вокруг рукояти. Превью
+каждой анимации лежат в `previews/anim/<id>_<анимация>.gif`.
+
+| id | анимации (`animation.<id>.<имя>`) |
+|---|---|
+| `mk18` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, shoot_last, idle_empty, firemode |
+| `glock17` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, shoot_last, idle_empty |
+| `ak47` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, firemode |
+| `deagle` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, shoot_last, idle_empty |
+| `mp5a5` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty |
+| `m870` | idle, draw, holster, sprint, shoot, inspect, pump, reload, reload_start, reload_end |
+| `awm` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, bolt |
+
+- **Зацикленные:** `idle` (лёгкое «дыхание»), `sprint` (ствол опущен и
+  покачивается), `idle_empty` (затвор/кожух остаётся на задержке).
+- **shoot:** спуск, отдача с подбросом, цикл затвора/кожуха (у пистолетов ещё и
+  ствол опускается, у Desert Eagle взводится курок).
+- **shoot_last:** последний выстрел, затвор встаёт на задержку. После него
+  держите `idle_empty`.
+- **reload / reload_empty:** наклон оружия, нажатие кнопки, магазин выпадает,
+  новый вставляется с толчком. В `reload_empty` дополнительно: у Glock и Desert
+  Eagle сбрасывается затворная задержка, у MK18 закрывается затвор, у AK
+  передёргивается затвор, у MP5 «HK slap», у AWM цикл затвора.
+- **inspect:** оружие поворачивается одним, затем другим боком; частичная
+  проверка патронника и магазина.
+- **draw / holster:** доставание и убирание.
+- **Особые:** `firemode` (переводчик MK18 и AK); `pump`, `reload_start`,
+  `reload` и `reload_end` у Remington (`reload` проигрывается по разу на каждый
+  патрон); `bolt` у AWM.
+
+Анимации можно открыть в Blockbench: откройте `.bbmodel` и выберите
+`Animation → Import Animations` → `<id>.animation.json`.
 
 ## Что внутри
 

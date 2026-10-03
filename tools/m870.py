@@ -5,6 +5,7 @@ Real proportions: ~1000 mm overall, 470 mm barrel.
 Scale: 1 unit ~= 16 mm.  Muzzle points north (-Z), bore axis x=8, y=10.
 """
 
+import anims
 from bbgen import Material, Model
 
 MATERIALS = {
@@ -161,17 +162,75 @@ GRIP_POINT = (8.0, 6.8, 15.8)
 
 DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.22, "tilt": 30, "push": -3.5}
 
-ANIMATIONS = {
-    "shoot": (0.75, {
-        "trigger": {"rotation": {0.0: [0, 0, 0], 0.03: [-12, 0, 0], 0.15: [0, 0, 0]}},
-        "pump": {"position": {0.2: [0, 0, 0], 0.4: [0, 0, 5.8], 0.45: [0, 0, 5.8], 0.65: [0, 0, 0]}},
-    }),
-    "pump": (0.5, {
-        "pump": {"position": {0.0: [0, 0, 0], 0.2: [0, 0, 5.8], 0.25: [0, 0, 5.8], 0.45: [0, 0, 0]}},
-    }),
-    # push a shell up into the loading port and forward into the tube
-    "reload": (0.7, {
-        "shell": {"position": {0.0: [0, -5, 0], 0.3: [0, -0.4, 0], 0.55: [0, 1.6, -4.5],
-                               0.56: [0, -5, 0], 0.7: [0, -5, 0]}},
-    }),
+ANIM = {
+    "trigger": True, "trigger_angle": 12, "mag": None,
+    "recoil": 3.0, "recoil_time": 0.4, "shot_time": 0.45,
 }
+
+
+def _pump(a, t0):
+    a.pos("pump", t0, anims.ZERO)
+    a.pos("pump", t0 + 0.16, [0, 0, 5.8], "easeOutQuad")
+    a.pos("pump", t0 + 0.22, [0, 0, 5.8])
+    a.pos("pump", t0 + 0.38, anims.ZERO, "easeInQuad")
+    a.track("root", "position", [(t0, anims.ZERO), (t0 + 0.16, [0, -0.3, 0.6], "easeOutQuad"),
+                                 (t0 + 0.38, anims.ZERO, "easeInOutSine")])
+
+
+def _shoot(c):
+    a = anims.shoot(c)
+    a.length = 0.95
+    _pump(a, 0.45)
+    return a
+
+
+def _pump_only(c):
+    a = anims.Anim(0.42)
+    _pump(a, 0.0)
+    return a
+
+
+def _insert(a, t0):
+    """One shell pushed up into the loading port and forward into the tube."""
+    a.pos("shell", t0, [0, -6, 2])
+    a.pos("shell", t0 + 0.2, [0, -1.0, 0], "easeOutCubic")
+    a.pos("shell", t0 + 0.32, [0, 0.3, -3.0], "easeInQuad")
+    a.pos("shell", t0 + 0.33, [0, -6, 2], "step")
+
+
+def _reload(c):
+    """Loop this once per shell."""
+    a = anims.Anim(0.55)
+    a.track("root", "rotation", [(0, [4, 10, -40]), (0.55, [4, 10, -40])])
+    a.track("root", "position", [(0, [-1, 1.5, -2]), (0.55, [-1, 1.5, -2])])
+    _insert(a, 0.1)
+    return a
+
+
+def _reload_start(c):
+    a = anims.Anim(0.35)
+    a.track("root", "rotation", [(0, anims.ZERO), (0.35, [4, 10, -40], "easeInOutSine")])
+    a.track("root", "position", [(0, anims.ZERO), (0.35, [-1, 1.5, -2], "easeInOutSine")])
+    return a
+
+
+def _reload_end(c):
+    a = anims.Anim(0.85)
+    a.track("root", "rotation", [(0, [4, 10, -40]), (0.35, anims.ZERO, "easeInOutSine")])
+    a.track("root", "position", [(0, [-1, 1.5, -2]), (0.35, anims.ZERO, "easeInOutSine")])
+    _pump(a, 0.4)
+    return a
+
+
+def _inspect(c):
+    a = anims.inspect(c)
+    a.pos("pump", 2.0, anims.ZERO)
+    a.pos("pump", 2.2, [0, 0, 2.0], "easeInOutSine")
+    a.pos("pump", 2.45, [0, 0, 2.0])
+    a.pos("pump", 2.6, anims.ZERO, "easeInOutSine")
+    return a
+
+
+ANIMATIONS = anims.build(ANIM, {"shoot": _shoot, "pump": _pump_only, "reload": _reload,
+                                "reload_start": _reload_start, "reload_end": _reload_end,
+                                "inspect": _inspect})

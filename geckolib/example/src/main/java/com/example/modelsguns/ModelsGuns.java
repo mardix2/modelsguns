@@ -11,13 +11,17 @@ import net.minecraft.world.item.Item;
 public class ModelsGuns implements ModInitializer {
     public static final String MOD_ID = "modelsguns";
 
+    /// one-shot animations available for every gun (see README for the extra ones)
+    public static final String[] ACTIONS = {"shoot", "shoot_last", "reload", "reload_empty", "inspect",
+            "draw", "holster"};
+
     public static final String[] GUNS = {"mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm"};
 
     @Override
     public void onInitialize() {
         for (String id : GUNS) {
             ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(MOD_ID, id));
-            Registry.register(BuiltInRegistries.ITEM, key, new GunItem(id, new Item.Properties().setId(key).stacksTo(1)));
+            Registry.register(BuiltInRegistries.ITEM, key, new GunItem(id, ACTIONS, new Item.Properties().setId(key).stacksTo(1)));
         }
     }
 }
