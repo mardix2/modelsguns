@@ -61,7 +61,9 @@ class Model:
         self.materials = materials
         self.density = density  # texels per model unit
         self.cubes = []
-        self.groups = []  # ordered group names
+        self.groups = []  # ordered group names (become GeckoLib bones)
+        self.pivots = {}  # group -> pivot (animation centre)
+        self.dynamic = set()  # animated groups: never cull faces across them
 
     # -- building helpers -------------------------------------------------
     def box(self, name, x0, y0, z0, x1, y1, z1, mat, group, pattern=None, rot=None, text=None):
@@ -200,11 +202,48 @@ class Model:
             self.box(name + "_d%d" % i, cx - r, cy - t, z0 + ee, cx + r, cy + t, z1 - ee,
                      mat, group, pattern, rot=("z", ang, (cx, cy, (z0 + z1) / 2)))
 
+    def regroup(self, mapping, pivots=None):
+        """Move cubes whose name starts with a prefix into another group
+        (bone), e.g. moving parts that animations need on their own."""
+        for c in self.cubes:
+            for prefix, grp in mapping.items():
+                if c.name.startswith(prefix):
+                    c.group = grp
+                    break
+        used = []
+        for c in self.cubes:
+            if c.group not in used:
+                used.append(c.group)
+        self.groups = [g for g in self.groups if g in used] + [g for g in used if g not in self.groups]
+        if pivots:
+            self.pivots.update({k: list(v) for k, v in pivots.items()})
+
     def bounds(self):
         pts = [p for c in self.cubes for p in world_corners(c)]
         lo = [min(p[i] for p in pts) for i in range(3)]
         hi = [max(p[i] for p in pts) for i in range(3)]
         return lo, hi
+
+    def cyl_x(self, name, x0, x1, cy, cz, r, mat, group, pattern=None):
+        """Octagonal 'cylinder' along X made of four bars."""
+        t = r * math.tan(math.radians(22.5))
+        e = 0.01
+        self.box(name, x0, cy - t, cz - r, x1, cy + t, cz + r, mat, group, pattern)
+        self.box(name + "_v", x0 + e, cy - r, cz - t, x1 - e, cy + r, cz + t, mat, group, pattern)
+        for i, ang in enumerate((45, -45)):
+            ee = e * (2 + i)
+            self.box(name + "_d%d" % i, x0 + ee, cy - t, cz - r, x1 - ee, cy + t, cz + r,
+                     mat, group, pattern, rot=("x", ang, ((x0 + x1) / 2, cy, cz)))
+
+    def rail_z(self, name, x0, x1, y_top_base, z0, z1, mat, group, period=0.75, tooth=0.5, h=0.2,
+               neck=None):
+        """Top-mounted Picatinny rail: optional neck, slotted base and teeth."""
+        if neck:
+            self.box(name + "_neck", x0 + 0.15, y_top_base - 0.17 - neck, z0, x1 - 0.15,
+                     y_top_base - 0.17, z1, mat, group)
+        self.box(name + "_base", x0, y_top_base - 0.17, z0, x1, y_top_base, z1, mat, group)
+        self.teeth_z(name + "_t", "up", x0, x1, y_top_base, h, z0 + 0.1, z1, mat, group,
+                     period=period, tooth=tooth)
 
     def center_yz(self, step=0.25):
         """Move the model so its Y/Z bounding box is centred on 8 (x is kept)."""
@@ -215,6 +254,7 @@ class Model:
             d.append(round((8 - c) / step) * step)
         for c in self.cubes:
             c.shift(d)
+        self.pivots = {k: [a + b for a, b in zip(v, d)] for k, v in self.pivots.items()}
         return d
 
     def check_java_limits(self):
@@ -254,7 +294,9 @@ class Model:
                 for a in (0.0, 0.25, 0.5, 0.75, 1.0):
                     for b in (0.0, 0.25, 0.5, 0.75, 1.0):
                         p = [tl[i] + a * e1[i] + b * e2[i] + n[i] for i in range(3)]
-                        if not any(o is not c and inside(o, p) for o in occ):
+                        if not any(o is not c and (o.group == c.group or (
+                                o.group not in self.dynamic and c.group not in self.dynamic))
+                                and inside(o, p) for o in occ):
                             ok = False
                             break
                     if not ok:
@@ -315,6 +357,63 @@ class Model:
             "display": display,
             "groups": groups,
         }
+
+    def geo_json(self):
+        """GeckoLib / Bedrock geometry (format 1.12.0).
+
+        Java/Blockbench space (block centre at 8,8,8) -> Bedrock item space:
+        x' = 8 - x (Bedrock mirrors X), y' = y, z' = z - 8.  Cube rotations
+        flip sign on X and Y, as Blockbench does on export."""
+        lo, hi = self.bounds()
+        bones = [{"name": "root", "pivot": [0, 0, 0]}]
+        for g in self.groups:
+            cubes = []
+            for c in self.cubes:
+                if c.group != g:
+                    continue
+                size = [c.to[i] - c.frm[i] for i in range(3)]
+                cube = {"origin": rnd([8 - c.to[0], c.frm[1], c.frm[2] - 8]), "size": rnd(size)}
+                if c.rot:
+                    axis, ang, o = c.rot
+                    r = [0.0, 0.0, 0.0]
+                    k = "xyz".index(axis)
+                    r[k] = -ang if k < 2 else ang
+                    cube["pivot"] = rnd([8 - o[0], o[1], o[2] - 8])
+                    cube["rotation"] = rnd(r)
+                uv = {}
+                for f in FACES:
+                    if f not in c.uv:
+                        continue
+                    u0, v0, u1, v1 = c.uv[f]
+                    if f == "down":
+                        uv[f] = {"uv": [u0, v1], "uv_size": [u1 - u0, v0 - v1]}
+                    else:
+                        uv[f] = {"uv": [u0, v0], "uv_size": [u1 - u0, v1 - v0]}
+                cube["uv"] = uv
+                cubes.append(cube)
+            p = self.pivots.get(g)
+            if p is None:
+                cs = [c for c in self.cubes if c.group == g]
+                p = [(min(c.frm[i] for c in cs) + max(c.to[i] for c in cs)) / 2 for i in range(3)]
+            bones.append({"name": g, "parent": "root", "pivot": rnd([8 - p[0], p[1], p[2] - 8]),
+                          "cubes": cubes})
+        width = max(hi[0] - lo[0], hi[2] - lo[2]) / 16 + 1
+        return {
+            "format_version": "1.12.0",
+            "minecraft:geometry": [{
+                "description": {
+                    "identifier": "geometry." + self.name,
+                    "texture_width": self.size, "texture_height": self.size,
+                    "visible_bounds_width": round(width + 1, 2),
+                    "visible_bounds_height": round((hi[1] - lo[1]) / 16 + 1, 2),
+                    "visible_bounds_offset": [0, round((lo[1] + hi[1]) / 32, 2), 0],
+                },
+                "bones": bones,
+            }],
+        }
+
+    def java_legal(self):
+        return all(not c.rot or c.rot[1] in ALLOWED_ANGLES for c in self.cubes)
 
     def bbmodel(self, display, texture_rel_path):
         def uid(*parts):
@@ -488,7 +587,10 @@ def draw_text(px, text, ux, uy, w, h, mat):
     th = len(lines) * 6 - 1
     if th > h:
         return
-    col = tuple(clamp(c * 0.6 + 60) for c in mat.rgb)
+    if sum(mat.rgb) / 3 > 105:
+        col = tuple(clamp(c * 0.45) for c in mat.rgb)   # dark engraving on bright metal
+    else:
+        col = tuple(clamp(c * 0.6 + 60) for c in mat.rgb)
     for li, line in enumerate(lines):
         tw = len(line) * 4 - 1
         if tw > w:
@@ -583,7 +685,26 @@ def pat_logo(p, f, u, v, w, h, c, rng):
     return 0
 
 
+def pat_wood(p, f, u, v, w, h, c, rng):
+    # long grain running along the gun (Z), wavy, with darker streaks
+    phase = p[1] * 7.0 + p[0] * 4.0 + 1.6 * math.sin(p[2] * 0.9 + p[1] * 2.0)
+    g = math.sin(phase * 2.2)
+    d = 10 * g
+    if g > 0.85:
+        d -= 22
+    return int(d + rng.choice((-3, 0, 3)))
+
+
+def pat_ribs_z(p, f, u, v, w, h, c, rng):
+    # grip ribs across the length (forends)
+    if f in ("east", "west", "down") and (p[2] % 0.6) < 0.2:
+        return -18
+    return 0
+
+
 PATTERNS = {
+    "wood": pat_wood,
+    "ribs_z": pat_ribs_z,
     "rail": pat_rail(0.75, 0.25),
     "rail_pistol": pat_rail(1.5, 0.5),
     "serration": pat_serration,

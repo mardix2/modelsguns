@@ -15,6 +15,7 @@ MATERIALS = {
     "steel_dark": Material((24, 24, 26), 4),
     "white": Material((232, 232, 224), 3, edge=False),
     "bore": Material((6, 6, 6), 1, edge=False),
+    "brass": Material((178, 142, 66), 6),
 }
 
 
@@ -160,7 +161,7 @@ def build():
             lo, hi = (a, a + 0.03) if side == "l" else (b - 0.03, b)
             B("takedown_serr_%s_%d" % (side, k), lo, 14.5, z, hi, 14.95, z + 0.15, "steel_dark", g)
     # reversible magazine catch
-    m.bevel("mag_catch", 5.8, 12.4, 15.0, 10.2, 13.3, 15.8, 0.08, "frame", g, "knurl", axis="x")
+    m.bevel("catch_mag", 5.8, 12.4, 15.0, 10.2, 13.3, 15.8, 0.08, "frame", g, "knurl", axis="x")
 
     # ======================================================================
     # grip (22 deg grip angle, all parts share one pivot)
@@ -192,14 +193,37 @@ def build():
     B("flare_f_l", 6.3, 1.6, 15.0, 7.25, 2.6, 15.6, "frame", g, rot=gr)
     B("flare_f_r", 8.75, 1.6, 15.0, 9.7, 2.6, 15.6, "frame", g, rot=gr)
     # magazine tube visible in the cut-out, baseplate
-    B("mag_tube", 6.5, 1.6, 15.35, 9.5, 3.4, 20.9, "steel_dark", g, rot=gr)
+    B("mag_tube", 6.5, 1.6, 15.35, 9.5, 12.6, 20.9, "steel_dark", g, rot=gr)
+    B("mag_follower_round", 7.55, 12.6, 15.9, 8.45, 13.0, 19.2, "brass", g, rot=gr)
     B("mag_tube_spine", 7.6, 1.6, 15.25, 8.4, 3.2, 15.35, "steel_dark", g, rot=gr)
     m.bevel("mag_baseplate", 6.2, 0.9, 15.4, 9.8, 1.6, 21.0, 0.1, "frame", g, axis="y", rot=gr)
     B("mag_base_lip_f", 6.6, 1.0, 15.1, 9.4, 1.5, 15.4, "frame", g, rot=gr)
     B("mag_base_lip_b", 6.6, 0.95, 21.0, 9.4, 1.45, 21.35, "frame", g, rot=gr)
     B("mag_base_hole", 7.85, 0.88, 17.5, 8.15, 0.9, 17.8, "bore", g, rot=gr)
 
+    m.regroup({"mag_": "magazine", "trigger_shoe": "trigger", "trigger_safety": "trigger"},
+              pivots={"trigger": (8, 13.4, 11.8), "magazine": (8, 13.0, 18.4),
+                      "slide": (8, 17, 13), "barrel": (8, 16.6, 10)})
+    m.dynamic = {"slide", "barrel", "magazine", "trigger"}
     return m
 
 
 GRIP_POINT = (8.0, 9.0, 20.5)
+
+DISPLAY = {"hand": 0.28, "fp": 0.32, "gui": 0.52, "tilt": 0, "push": 0.0}
+
+# magazine leaves along the 22.5 deg grip axis: (0, -cos, +sin)
+_D = (0.924, 0.383)
+ANIMATIONS = {
+    "shoot": (0.15, {
+        "slide": {"position": {0.0: [0, 0, 0], 0.035: [0, 0, 3.2], 0.15: [0, 0, 0]}},
+        "barrel": {"position": {0.0: [0, 0, 0], 0.035: [0, -0.25, 1.0], 0.15: [0, 0, 0]}},
+        "trigger": {"rotation": {0.0: [0, 0, 0], 0.02: [14, 0, 0], 0.12: [0, 0, 0]}},
+    }),
+    "reload": (1.6, {
+        "magazine": {"position": {0.0: [0, 0, 0], 0.25: [0, -4 * _D[0], 4 * _D[1]],
+                                  0.5: [0, -16 * _D[0], 16 * _D[1]], 0.51: [0, -16 * _D[0], 16 * _D[1]],
+                                  0.95: [0, -4 * _D[0], 4 * _D[1]], 1.1: [0, 0, 0]}},
+        "slide": {"position": {1.2: [0, 0, 0], 1.32: [0, 0, 3.2], 1.45: [0, 0, 0]}},
+    }),
+}

@@ -10,8 +10,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bbgen  # noqa: E402
-import glock17  # noqa: E402
-import mk18  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NS = "modelsguns"
@@ -90,39 +88,79 @@ def display_for(model, grip, hand_scale, fp_scale, gui_scale, gui_tilt, fp_push)
     }
 
 
-GUNS = [
-    # module, hand scale, first person scale, gui scale, gui tilt, fp push (z)
-    (mk18, 0.4, 0.42, 0.34, 30, -2.0),
-    (glock17, 0.28, 0.32, 0.52, 0, 0.0),
-]
+def animation_json(name, anims):
+    """Animations are written in model (Java) space; Bedrock mirrors X, so
+    X positions and X/Y rotations flip sign."""
+    out = {}
+    for anim, (length, bones) in anims.items():
+        bb = {}
+        for bone, chans in bones.items():
+            bb[bone] = {}
+            for chan, keys in chans.items():
+                conv = {}
+                for t, v in sorted(keys.items()):
+                    if chan == "position":
+                        v = [-v[0], v[1], v[2]]
+                    else:
+                        v = [-v[0], -v[1], v[2]]
+                    conv["%g" % t] = [clean(x) for x in v]
+                bb[bone][chan] = conv
+        out["animation.%s.%s" % (name, anim)] = {"animation_length": length, "bones": bb}
+    return {"format_version": "1.8.0", "animations": out}
+
+
+GUN_MODULES = ["mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm"]
 
 
 def main():
-    tex_dir = os.path.join(ROOT, "resourcepack/assets", NS, "textures/item")
-    mdl_dir = os.path.join(ROOT, "resourcepack/assets", NS, "models/item")
-    bb_dir = os.path.join(ROOT, "blockbench")
-    pv_dir = os.path.join(ROOT, "previews")
-    for d in (tex_dir, mdl_dir, bb_dir, pv_dir):
+    import importlib
+    only = sys.argv[1:]
+    rp = os.path.join(ROOT, "resourcepack/assets", NS)
+    gl = os.path.join(ROOT, "geckolib/assets", NS)
+    dirs = {
+        "tex": os.path.join(rp, "textures/item"), "mdl": os.path.join(rp, "models/item"),
+        "items": os.path.join(rp, "items"),
+        "gl_geo": os.path.join(gl, "geo/item"), "gl_tex": os.path.join(gl, "textures/item"),
+        "gl_anim": os.path.join(gl, "animations/item"), "gl_mdl": os.path.join(gl, "models/item"),
+        "bb": os.path.join(ROOT, "blockbench"), "pv": os.path.join(ROOT, "previews"),
+    }
+    for d in dirs.values():
         os.makedirs(d, exist_ok=True)
 
-    for mod, hs, fs, gs, tilt, push in GUNS:
+    for modname in GUN_MODULES:
+        if only and modname not in only:
+            continue
+        mod = importlib.import_module(modname)
         m = mod.build()
         shift = m.center_yz()
         m.check_java_limits()
         grip = [a + b for a, b in zip(mod.GRIP_POINT, shift)]
         m.build_texture()
-        display = display_for(m, grip, hs, fs, gs, tilt, push)
+        dp = mod.DISPLAY
+        display = display_for(m, grip, dp["hand"], dp["fp"], dp["gui"], dp["tilt"], dp["push"])
+        n = m.name
 
-        png = os.path.join(tex_dir, m.name + ".png")
-        m.texture.save(png)
-        bbgen.save_json(m.java_json(NS, display), os.path.join(mdl_dir, m.name + ".json"))
-        rel = "../resourcepack/assets/%s/textures/item/%s.png" % (NS, m.name)
-        bbgen.save_json(m.bbmodel(display, rel), os.path.join(bb_dir, m.name + ".bbmodel"))
+        # vanilla item model (resource pack, 1.21.4+ item definition)
+        m.texture.save(os.path.join(dirs["tex"], n + ".png"))
+        bbgen.save_json(m.java_json(NS, display), os.path.join(dirs["mdl"], n + ".json"))
+        bbgen.save_json({"model": {"type": "minecraft:model", "model": "%s:item/%s" % (NS, n)}},
+                        os.path.join(dirs["items"], n + ".json"))
+        # GeckoLib: geometry, texture, animations, item display json
+        bbgen.save_json(m.geo_json(), os.path.join(dirs["gl_geo"], n + ".geo.json"))
+        m.texture.save(os.path.join(dirs["gl_tex"], n + ".png"))
+        bbgen.save_json(animation_json(n, mod.ANIMATIONS),
+                        os.path.join(dirs["gl_anim"], n + ".animation.json"))
+        bbgen.save_json({"parent": "builtin/entity", "gui_light": "front", "display": display},
+                        os.path.join(dirs["gl_mdl"], n + ".json"))
+        # Blockbench project
+        rel = "../resourcepack/assets/%s/textures/item/%s.png" % (NS, n)
+        bbgen.save_json(m.bbmodel(display, rel), os.path.join(dirs["bb"], n + ".bbmodel"))
 
         views = {"right": (-90, 0), "left": (90, 0), "iso_right": (-130, 22), "iso_left": (50, 22)}
         for vname, (yaw, pitch) in views.items():
-            bbgen.render(m, yaw, pitch).save(os.path.join(pv_dir, "%s_%s.png" % (m.name, vname)))
-        print("%-8s cubes=%3d texture=%dx%d shift=%s" % (m.name, len(m.cubes), m.size, m.size, shift))
+            bbgen.render(m, yaw, pitch).save(os.path.join(dirs["pv"], "%s_%s.png" % (n, vname)))
+        print("%-8s cubes=%3d texture=%dx%d bones=%s" % (n, len(m.cubes), m.size, m.size,
+                                                        ",".join(m.groups)))
 
 
 if __name__ == "__main__":

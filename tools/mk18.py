@@ -307,7 +307,8 @@ def build():
     # magazine (curved 30 rd PMAG)
     # ======================================================================
     g = "magazine"
-    m.bevel("mag_top", 7.15, 2.9, 7.25, 8.85, 6.0, 10.0, 0.06, "fde", g, axis="y")
+    m.bevel("mag_top", 7.15, 2.9, 7.25, 8.85, 7.6, 10.0, 0.06, "fde", g, axis="y")
+    B("mag_round", 7.6, 7.6, 7.5, 8.4, 7.95, 9.7, "brass", g)
     B("mag_fill", 7.15, 2.45, 8.9, 8.85, 3.0, 10.0, "fde", g)
     B("mag_spine_f", 7.6, 2.9, 7.12, 8.4, 5.9, 7.25, "fde", g)
     B("mag_spine_b", 7.6, 2.9, 10.0, 8.4, 5.9, 10.12, "fde", g)
@@ -341,8 +342,30 @@ def build():
         B("mag_round_l_%d" % i, 7.11, y, 9.57, 7.13, y + 0.25, 9.73, "brass", g)
         B("mag_round_r_%d" % i, 8.87, y, 9.57, 8.89, y + 0.25, 9.73, "brass", g)
 
+    m.regroup({"bcg_": "bolt", "ch_": "charging_handle", "trigger_": "trigger",
+               "dust_": "dust_cover"},
+              pivots={"trigger": (8, 8.3, 11.45), "dust_cover": (8.87, 9.4, 9.75),
+                      "magazine": (8, 6.0, 8.6), "bolt": (8, 10, 9.7),
+                      "charging_handle": (8, 11.0, 16.2)})
+    m.dynamic = {"bolt", "charging_handle", "trigger", "dust_cover", "magazine"}
     return m
 
 
 # point (model units) that should sit in the player's hand
 GRIP_POINT = (8.0, 5.5, 14.4)
+
+DISPLAY = {"hand": 0.4, "fp": 0.42, "gui": 0.34, "tilt": 30, "push": -2.0}
+
+# keyframes in model space (units = model pixels, degrees)
+ANIMATIONS = {
+    "shoot": (0.12, {
+        "bolt": {"position": {0.0: [0, 0, 0], 0.03: [0, 0, 2.2], 0.12: [0, 0, 0]}},
+        "trigger": {"rotation": {0.0: [0, 0, 0], 0.02: [12, 0, 0], 0.1: [0, 0, 0]}},
+    }),
+    "reload": (2.0, {
+        "magazine": {"position": {0.0: [0, 0, 0], 0.3: [0, -3, 0], 0.6: [0, -14, 0],
+                                  0.61: [0, -14, 0], 1.1: [0, -3, 0], 1.3: [0, 0, 0]}},
+        "charging_handle": {"position": {1.45: [0, 0, 0], 1.6: [0, 0, 2.8], 1.75: [0, 0, 0]}},
+        "bolt": {"position": {1.45: [0, 0, 0], 1.6: [0, 0, 2.8], 1.75: [0, 0, 0]}},
+    }),
+}
