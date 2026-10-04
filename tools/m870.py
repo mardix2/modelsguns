@@ -147,6 +147,10 @@ PUMP = 95 / U
 
 ANIM = {
     "hands": {"left_arm": [("pump", None, None), ("shell", "shell_hull", None)]},
+    # while loading, the left hand waits under the loading port
+    "hand_points": {"port": (-6, Y(205), Z(1010))},
+    "hand_rest": {"left_arm": {"reload_start": (None, "port"), "reload": ("port", "port"),
+                               "reload_end": ("port", None)}},
     "aim_above_mm": 24,
     "trigger": True, "trigger_angle": 12, "mag": None,
     "recoil": 3.0, "recoil_time": 0.4, "shot_time": 0.45,

@@ -173,7 +173,7 @@ def group_box(m, group, name_prefix=None):
     return lo, hi
 
 
-def full_animations(mod, m, display, palms, gun_cubes):
+def full_animations(mod, m, display, palms, gun_cubes, shift=(0, 0, 0)):
     """The gun's own animations + aiming / dry fire / walk, with the arms
     following the parts the hands work."""
     import copy
@@ -193,8 +193,15 @@ def full_animations(mod, m, display, palms, gun_cubes):
     if not palms:
         return out
     hands = c.get("hands", {"left_arm": [("magazine", None, None)]})
+    # optional resting places other than the grip / forend for some animations
+    # (e.g. the shotgun's loading port while shells go in)
+    k = bbgen.MM(None, mod.U)
+    spots = {n: [a_ + b_ for a_, b_ in zip(k.P(*p_), shift)] for n, p_ in c.get("hand_points", {}).items()}
     for name, spec in out.items():
-        for arm, parts in hands.items():
+        for arm in hands:
+            rs = c.get("hand_rest", {}).get(arm, {}).get(name, (None, None))
+            rest = [[spots[r][i] - palms[arm][i] for i in range(3)] if r else [0, 0, 0] for r in rs]
+            parts = hands[arm]
             segs = []
             for bone, prefix, only in parts:
                 if only and name not in only:
@@ -213,8 +220,8 @@ def full_animations(mod, m, display, palms, gun_cubes):
                 delta = [0, 0, 0] if ride else [point[i] - palms[arm][i] for i in range(3)]
                 for win in bone_windows(spec, bone):
                     segs.append((win, bone, point, delta, ride))
-            if segs:
-                arm_track(spec, arm, segs, m.group_pivot)
+            if segs or any(r for r in rs):
+                arm_track(spec, arm, segs, m.group_pivot, rest=rest)
     return out
 
 
@@ -246,17 +253,19 @@ def point_offset(spec, bone, pivot, point, t):
     return [q[i] + pivot[i] + pos[i] - point[i] for i in range(3)]
 
 
-def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20):
+def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20, rest=([0, 0, 0], [0, 0, 0])):
     """Position keys for an arm doing the jobs in `segs` one after another:
-    reach the part, move with it (sampled), go back to the grip / forend."""
-    keys = [(0.0, [0, 0, 0], None)]
+    reach the part, move with it (sampled), go back to its resting place
+    (rest[0] at the start, rest[1] from the first job on / at the end)."""
+    r0, r1 = rest
+    keys = [(0.0, r0, None)]
     L = spec["length"]
     segs = sorted(segs, key=lambda s: s[0][0])
     for i, ((t0, t1), bone, point, delta, ride) in enumerate(segs):
         pv = pivot_of(bone)
-        start = max(keys[-1][0], t0 - (0 if ride else reach))
-        if start > keys[-1][0] + 0.02 and any(abs(x) > 1e-6 for x in keys[-1][1]) is False:
-            keys.append((start, [0, 0, 0], None))
+        start = max(keys[-1][0], t0 - (0 if ride and keys[-1][1] == [0, 0, 0] else reach))
+        if start > keys[-1][0] + 0.02 and keys[-1][1] in (r0, r1):
+            keys.append((start, keys[-1][1], None))
         n = max(1, int((t1 - t0) * rate))
         for j in range(n + 1):
             t = t0 + (t1 - t0) * j / n
@@ -267,7 +276,11 @@ def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20):
         nxt = segs[i + 1][0][0] - reach if i + 1 < len(segs) else L + 1
         end = min(L, t1 + (0 if ride else back))
         if end > keys[-1][0] + 1e-4 and end <= nxt:
-            keys.append((end, [0, 0, 0], "easeInOutSine"))
+            keys.append((end, r1, "easeInOutSine"))
+    if not segs:      # only moves between resting places
+        keys.append((L * 0.8, r1, "easeInOutSine"))
+    elif keys[-1][0] < L - 1e-4 and keys[-1][1] != r1:
+        keys.append((L, r1, "easeInOutSine"))
     ch = spec["bones"].setdefault(arm, {}).setdefault("position", {})
     ch.clear()
     for t, v, e in keys:
@@ -303,7 +316,7 @@ def prepare(mod):
         m.pivots.update({g: [a + b for a, b in zip(p, shift)] for g, p in piv.items()})
         palms = {g: [a + b for a, b in zip(p, shift)] for g, p in palms.items()}
     m.build_texture()
-    return m, display, gun_cubes, full_animations(mod, m, display, palms, gun_cubes)
+    return m, display, gun_cubes, full_animations(mod, m, display, palms, gun_cubes, shift)
 
 
 def fp_preview(m, display, anim_set):
