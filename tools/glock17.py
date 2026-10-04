@@ -213,6 +213,20 @@ def build():
 
 GRIP_POINT = (8.0, 9.0, 20.5)
 
+
+U = 7.0      # mm per model unit (for the arms)
+
+
+def _mm(z, y):
+    return (z * U, (y - 10) * U)
+
+
+ARMS = {
+    "grip": (_mm(18.4, 13.4), _mm(22.69, 3.05)), "grip_w": 15, "grip_d": 21,
+    "trigger": _mm(11.5, 11.6),
+    "left": {"kind": "support"}, "right_dir": (14, 8), "left_dir": (16, -20),
+}
+
 DISPLAY = {"hand": 0.28, "fp": 0.32, "gui": 0.52, "tilt": 0, "push": 0.0}
 
 ANIM = {

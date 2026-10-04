@@ -84,8 +84,8 @@ def holster(c):
 
 def sprint(c):
     a = Anim(0.8, loop=True)
-    base_r = [-22, 32, 18]
-    base_p = [-1.5, -2.5, 1.5]
+    base_r = c.get("sprint_rot", [-24, 14, 22])
+    base_p = c.get("sprint_pos", [-1.0, -3.0, 1.0])
     a.track("root", "rotation", [(0, base_r), (0.2, add(base_r, [2, 1.5, -2]), "easeInOutSine"),
                                  (0.4, base_r, "easeInOutSine"), (0.6, add(base_r, [2, -1.5, 2]), "easeInOutSine"),
                                  (0.8, base_r, "easeInOutSine")])
@@ -356,3 +356,148 @@ def build(c, extra=None):
     for k, v in (extra or {}).items():
         anims[k] = v(c) if callable(v) else v
     return {k: v.spec() for k, v in anims.items()}
+
+
+# ---------------------------------------------------------------------------
+# aiming down the sights, dry fire, walking, and the arms
+#
+# c["ads"] = {"pos": [x, y, z]} is the root offset (model px) that puts the
+# sight line on the screen centre in first person; build.py computes it
+# from the first-person display transform.
+
+def _ads(c):
+    return c.get("ads", {}).get("pos", ZERO)
+
+
+def aim_in(c):
+    a = Anim(c.get("aim_time", 0.25))
+    p = _ads(c)
+    a.track("root", "position", [(0, ZERO), (a.length, p, "easeOutCubic")])
+    a.track("root", "rotation", [(0, ZERO), (a.length * 0.5, [0.6, 0, -2.0], "easeOutQuad"),
+                                 (a.length, ZERO, "easeInOutSine")])
+    return a
+
+
+def aim(c):
+    """Held while aiming: the gun stays on the sight line, gently breathing."""
+    a = Anim(4.0, loop=True)
+    p = _ads(c)
+    a.track("root", "position", [(0, p), (1.0, add(p, [0, 0.04, 0]), "easeInOutSine"),
+                                 (2.0, add(p, [0.02, 0, 0]), "easeInOutSine"),
+                                 (3.0, add(p, [0, 0.03, 0]), "easeInOutSine"), (4.0, p, "easeInOutSine")])
+    a.track("root", "rotation", [(0, ZERO), (1.0, [0.12, 0.08, 0], "easeInOutSine"),
+                                 (2.0, [0.04, -0.06, 0], "easeInOutSine"),
+                                 (3.0, [-0.1, 0.04, 0], "easeInOutSine"), (4.0, ZERO, "easeInOutSine")])
+    return a
+
+
+def aim_out(c):
+    a = Anim(c.get("aim_time", 0.25) * 0.8)
+    p = _ads(c)
+    a.track("root", "position", [(0, p), (a.length, ZERO, "easeInOutSine")])
+    a.track("root", "rotation", [(0, ZERO), (a.length, ZERO)])
+    return a
+
+
+def shoot_aim(c):
+    """Shot while aiming: smaller, straighter kick around the sight line."""
+    cc = dict(c, recoil=c.get("recoil", 1.0) * 0.55)
+    a = shoot(cc)
+    p = _ads(c)
+    kick = cc["recoil"]
+    t = c.get("recoil_time", 0.2)
+    a.bones["root"]["position"] = {}
+    a.bones["root"]["rotation"] = {}
+    a.track("root", "position", [(0, p), (0.03, add(p, [0, 0.1 * kick, 1.3 * kick]), "easeOutQuad"),
+                                 (t, p, "easeInOutSine")])
+    a.track("root", "rotation", [(0, ZERO), (0.035, [2.2 * kick, 0.15 * kick, -0.2 * kick], "easeOutQuad"),
+                                 (t, ZERO, "easeInOutSine")])
+    return a
+
+
+def dry_fire(c, aimed=False):
+    """Empty gun: the trigger breaks with a click and nothing else happens."""
+    a = Anim(0.3)
+    _trigger(a, c, 0.0, hold=0.08)
+    p = _ads(c) if aimed else ZERO
+    a.track("root", "position", [(0, p), (0.04, add(p, [0, 0, 0.12]), "easeOutQuad"), (0.3, p, "easeInOutSine")])
+    a.track("root", "rotation", [(0, ZERO), (0.04, [0.3, 0, 0], "easeOutQuad"), (0.3, ZERO, "easeInOutSine")])
+    if c.get("action") and c.get("locks_back"):
+        a.pos(c["action"], 0, [0, 0, c["travel"]])     # the slide stays locked back
+        a.pos(c["action"], 0.3, [0, 0, c["travel"]])
+        for bone, k in c.get("followers", {}).items():
+            a.pos(bone, 0, k["pos"])
+            if "rot" in k:
+                a.rot(bone, 0, k["rot"])
+        if "stop" in c:
+            a.rot(c["stop"]["bone"], 0, c["stop"]["rot"])
+    if "hammer" in c and not c.get("locks_back"):
+        a.track("hammer", "rotation", [(0, [c["hammer"], 0, 0]), (0.02, ZERO, "easeInQuad")])
+    return a
+
+
+def walk(c):
+    a = Anim(0.9, loop=True)
+    a.track("root", "position", [(0, ZERO), (0.225, [0.25, -0.2, 0], "easeInOutSine"),
+                                 (0.45, ZERO, "easeInOutSine"), (0.675, [-0.25, -0.2, 0], "easeInOutSine"),
+                                 (0.9, ZERO, "easeInOutSine")])
+    a.track("root", "rotation", [(0, ZERO), (0.225, [0.4, 0.6, -0.8], "easeInOutSine"),
+                                 (0.45, ZERO, "easeInOutSine"), (0.675, [0.4, -0.6, 0.8], "easeInOutSine"),
+                                 (0.9, ZERO, "easeInOutSine")])
+    return a
+
+
+def standard_extras(c):
+    """The animations every gun gets on top of its own set."""
+    out = {
+        "aim_in": aim_in(c), "aim": aim(c), "aim_out": aim_out(c), "shoot_aim": shoot_aim(c),
+        "dry_fire": dry_fire(c), "dry_fire_aim": dry_fire(c, aimed=True), "walk": walk(c),
+    }
+    return {k: v.spec() for k, v in out.items()}
+
+
+def _keys(spec, bone, chan="position"):
+    """Sorted (t, vec, ease) of a bone channel in an animation spec."""
+    out = []
+    for t, v in sorted(spec["bones"].get(bone, {}).get(chan, {}).items()):
+        ease = None
+        if isinstance(v, tuple):
+            v, ease = v
+        out.append((t, list(v), ease))
+    return out
+
+
+def _set(spec, bone, chan, keys):
+    ch = spec["bones"].setdefault(bone, {}).setdefault(chan, {})
+    ch.clear()
+    for t, v, ease in keys:
+        ch[round(t, 4)] = (list(v), ease) if ease else list(v)
+
+
+def follow(spec, arm, bone, delta, reach=0.22, back=0.3):
+    """Move `arm` onto `bone` (offset `delta` from the arm's rest place),
+    ride along with the bone's position keys, then return.  Used for the
+    support hand taking magazines, racking pumps and charging handles."""
+    keys = _keys(spec, bone)
+    moving = [k for k in keys if any(abs(x) > 1e-6 for x in k[1])]
+    if not moving:
+        return
+    t_first = max(0.0, min(k[0] for k in moving) - 0.06)
+    i0 = max(i for i, k in enumerate(keys) if k[0] <= t_first) if any(k[0] <= t_first for k in keys) else 0
+    t0 = keys[i0][0]
+    t_last = max(k[0] for k in keys)
+    out = [(max(0.0, t0 - reach), ZERO, None), (t0, delta, "easeInOutSine")]
+    for t, v, ease in keys:
+        if t > t0:
+            out.append((t, add(delta, v), ease))
+    out.append((min(spec["length"], t_last + back), ZERO, "easeInOutSine"))
+    if out[0][0] > 0:
+        out.insert(0, (0.0, ZERO, None))
+    _set(spec, arm, "position", out)
+
+
+def ride(spec, arm, bone):
+    """The hand stays on a part that moves (pump forend): copy its keys."""
+    keys = _keys(spec, bone)
+    if keys:
+        _set(spec, arm, "position", keys)

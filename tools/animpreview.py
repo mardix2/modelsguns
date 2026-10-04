@@ -64,38 +64,75 @@ def posed_model(model, pose):
     return pm
 
 
-def gif(model, spec, path, yaw=-130, pitch=18, fps=20, size=(480, 320), bounds=None, slow=1.0):
+def to_view(model, display):
+    """Copy of a (posed) model moved into first-person view space (1/16
+    block, eye at the origin): item point p -> 16 * (0.56, -0.52, -0.72) + t
+    + s * (p - 8) for the right hand with zero display rotation; shifted by
+    8 for render().  Cubes behind the near plane are dropped."""
+    import copy
+    fp = display["firstperson_righthand"]
+    t, s = fp["translation"], fp["scale"][0]
+    base = [16 * 0.56 + t[0], 16 * -0.52 + t[1], 16 * -0.72 + t[2]]
+
+    def tr(p):
+        return [8 + base[i] + s * (p[i] - 8) for i in range(3)]
+
+    vm = copy.copy(model)
+    vm.cubes = []
+    for c in model.cubes:
+        c2 = copy.copy(c)
+        c2.frm, c2.to = tr(c.frm), tr(c.to)
+        if c.rot:
+            c2.rot = ("e", c.rot[1], tr(c.rot[2]))
+        if (c2.frm[2] + c2.to[2]) / 2 - 8 > -0.8:
+            continue
+        vm.cubes.append(c2)
+    return vm
+
+
+def frame_png(model, display, pose, size=(480, 320), yaw=14, pitch=8, half_w=13.0):
+    """First-person frame seen slightly from the left of the eye (a straight
+    orthographic view down the barrel shows nothing); the red cross marks
+    the screen centre."""
+    from PIL import ImageDraw
+    vm = to_view(posed_model(model, pose), display)
+    hh = half_w * size[1] / size[0]
+    vm.bounds = lambda: ([8 - half_w, 8 - hh, 8], [8 + half_w, 8 + hh, 8])
+    im = bbgen.render(vm, yaw, pitch, size[0], size[1], ss=1)
+    d = ImageDraw.Draw(im)
+    cx, cy = size[0] // 2, size[1] // 2
+    d.line([(cx - 5, cy), (cx + 5, cy)], fill=(230, 40, 40))
+    d.line([(cx, cy - 5), (cx, cy + 5)], fill=(230, 40, 40))
+    return im
+
+
+def gif(model, display, spec, path, fps=16):
     from PIL import Image
-    n = max(2, int(spec["length"] * fps * slow) + 1)
+    n = max(2, int(spec["length"] * fps) + 1)
     frames = []
     for i in range(n):
         t = spec["length"] * i / (n - 1)
-        pm = posed_model(model, pose_at(model, spec, t))
-        if bounds:
-            pm.bounds = lambda b=bounds: b
-        frames.append(bbgen.render(pm, yaw, pitch, size[0], size[1], ss=1).convert("P", palette=Image.ADAPTIVE))
+        frames.append(frame_png(model, display, pose_at(model, spec, t)).convert("P", palette=Image.ADAPTIVE))
     frames[0].save(path, save_all=True, append_images=frames[1:], duration=int(1000 / fps), loop=0)
 
 
 def main():
     import importlib
+
+    import build
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = os.path.join(root, "previews", "anim")
     os.makedirs(out, exist_ok=True)
-    names = sys.argv[1:] or ["mk18", "glock17"]
-    for name in names:
+    args = sys.argv[1:] or build.GUN_MODULES
+    only = [a.split(":")[1] for a in args if ":" in a]
+    names = [a.split(":")[0] for a in args]
+    for name in dict.fromkeys(names):
         mod = importlib.import_module(name)
-        m = mod.build()
-        shift = m.center_yz()
-        m.root_pivot = [a + b for a, b in zip(mod.GRIP_POINT, shift)]
-        m.build_texture()
-        lo, hi = m.bounds()
-        pad = 7
-        bounds = ([lo[0] - pad, lo[1] - pad * 1.6, lo[2] - pad], [hi[0] + pad, hi[1] + pad * 0.4, hi[2] + pad])
-        for anim, spec in mod.ANIMATIONS.items():
-            if isinstance(spec, tuple):
-                spec = {"length": spec[0], "bones": spec[1]}
-            gif(m, spec, os.path.join(out, "%s_%s.gif" % (name, anim)), bounds=bounds)
+        m, display, _, anim_set = build.prepare(mod)
+        for anim, spec in anim_set.items():
+            if only and anim not in only:
+                continue
+            gif(m, display, spec, os.path.join(out, "%s_%s.gif" % (m.name, anim)))
             print(name, anim)
 
 

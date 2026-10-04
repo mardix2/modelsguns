@@ -1,7 +1,11 @@
 package com.example.modelsguns;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Consumer;
 
+import com.example.modelsguns.client.GunRenderer;
+import com.example.modelsguns.client.GunState;
 import com.geckolib.animatable.GeoItem;
 import com.geckolib.animatable.client.GeoRenderProvider;
 import com.geckolib.animatable.instance.AnimatableInstanceCache;
@@ -9,16 +13,16 @@ import com.geckolib.animatable.manager.AnimatableManager;
 import com.geckolib.animation.AnimationController;
 import com.geckolib.animation.RawAnimation;
 import com.geckolib.animation.object.PlayState;
-import com.geckolib.model.DefaultedItemGeoModel;
 import com.geckolib.renderer.GeoItemRenderer;
 import com.geckolib.util.GeckoLibUtil;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUseAnimation;
 import net.minecraft.world.level.Level;
 import org.jspecify.annotations.Nullable;
 
@@ -34,10 +38,12 @@ import org.jspecify.annotations.Nullable;
  * models/item/<id>.json holds the hand/GUI transforms.
  *
  * Two controllers:
- *   "state"  loops animation.<id>.idle (swap it for sprint / idle_empty from your own logic),
+ *   "state"  loops idle / walk / sprint / aim (chosen on the client by GunState),
  *   "action" holds every one-shot animation of the gun as a triggerable animation
- *            (shoot, shoot_last, reload, reload_empty, inspect, draw, holster, ...).
- * Right click plays "shoot".
+ *            (shoot, shoot_aim, dry_fire, dry_fire_aim, reload, reload_empty, inspect, ...).
+ * Holding right click aims; releasing it fires an aimed shot.  A real mod would
+ * fire from its own key and pick shoot / shoot_aim / dry_fire / dry_fire_aim
+ * from the aim state and the ammo count.
  */
 public class GunItem extends Item implements GeoItem {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
@@ -54,27 +60,36 @@ public class GunItem extends Item implements GeoItem {
     @Override
     public void createGeoRenderer(Consumer<GeoRenderProvider> consumer) {
         consumer.accept(new GeoRenderProvider() {
-            private @Nullable GeoItemRenderer<GunItem> renderer;
+            private @Nullable GunRenderer renderer;
 
             @Override
             public GeoItemRenderer<?> getGeoItemRenderer() {
                 if (this.renderer == null) {
-                    this.renderer = new GeoItemRenderer<>(new DefaultedItemGeoModel<>(
-                            Identifier.fromNamespaceAndPath(ModelsGuns.MOD_ID, gunId)));
+                    this.renderer = new GunRenderer(gunId);
                 }
                 return this.renderer;
             }
         });
     }
 
+    private RawAnimation anim(String name, boolean loop) {
+        String full = "animation." + this.gunId + "." + name;
+        return loop ? RawAnimation.begin().thenLoop(full) : RawAnimation.begin().thenPlay(full);
+    }
+
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        final RawAnimation idle = RawAnimation.begin().thenLoop("animation." + gunId + ".idle");
-        controllers.add(new AnimationController<GunItem>("state", 4, test -> test.setAndContinue(idle)));
+        Map<String, RawAnimation> loops = new HashMap<>();
+        for (String name : new String[] {"idle", "walk", "sprint", "aim"}) {
+            loops.put(name, anim(name, true));
+        }
+        // 5 ticks of blending between the loops gives smooth aim in / out and sprint tuck
+        controllers.add(new AnimationController<GunItem>("state", 5,
+                test -> test.setAndContinue(loops.get(GunState.loop(this)))));
 
         final AnimationController<GunItem> action = new AnimationController<>("action", 0, test -> PlayState.STOP);
         for (String name : this.actions) {
-            action.triggerableAnim(name, RawAnimation.begin().thenPlay("animation." + gunId + "." + name));
+            action.triggerableAnim(name, anim(name, false));
         }
         controllers.add(action);
     }
@@ -85,11 +100,26 @@ public class GunItem extends Item implements GeoItem {
     }
 
     @Override
+    public int getUseDuration(ItemStack stack, LivingEntity entity) {
+        return 72000;
+    }
+
+    @Override
+    public ItemUseAnimation getUseAnimation(ItemStack stack) {
+        return ItemUseAnimation.NONE;
+    }
+
+    @Override
     public InteractionResult use(Level level, Player player, InteractionHand hand) {
-        ItemStack stack = player.getItemInHand(hand);
-        if (level instanceof ServerLevel serverLevel) {
-            triggerAnim(player, GeoItem.getOrAssignId(stack, serverLevel), "action", "shoot");
+        player.startUsingItem(hand);          // aim while right click is held
+        return InteractionResult.CONSUME;
+    }
+
+    @Override
+    public boolean releaseUsing(ItemStack stack, Level level, LivingEntity entity, int timeLeft) {
+        if (level instanceof ServerLevel serverLevel && entity instanceof Player player) {
+            triggerAnim(player, GeoItem.getOrAssignId(stack, serverLevel), "action", "shoot_aim");
         }
-        return InteractionResult.SUCCESS;
+        return true;
     }
 }

@@ -1,166 +1,148 @@
-"""Remington 870 Wingmaster (12 ga): 18.5" vent-rib barrel, grooved walnut
-forend, semi-pistol-grip walnut stock with checkering, recoil pad.
+"""Remington 870 Express Magnum (12 ga): vent-rib barrel, magazine tube,
+checkered walnut forend (pump), receiver, checkered semi-pistol-grip stock
+with recoil pad.
 
-Real proportions: ~1000 mm overall, 470 mm barrel.
-Scale: 1 unit ~= 16 mm.  Muzzle points north (-Z), bore axis x=8, y=10.
+Outlines are measured on a side photo (2.1 px per mm, muzzle at x=-24,
+bore at y=98; the forend and stock come from the traced wood mask);
+widths from real dimensions.  1 model unit = 16 mm.
 """
 
 import anims
-from bbgen import Material, Model
+from bbgen import Material, MM, Model
+from trace import Silhouette
 
 MATERIALS = {
-    "steel": Material((46, 47, 53), 3),          # deep blued steel
-    "steel_dark": Material((30, 30, 34), 3),
-    "steel_light": Material((102, 103, 110), 4),
-    "alloy": Material((40, 40, 43), 3),           # trigger plate
-    "wood": Material((116, 62, 30), 4),           # walnut
-    "wood_s": Material((116, 62, 30), 4, edge=False),
-    "wood_dark": Material((76, 38, 18), 4),
-    "rubber": Material((26, 26, 26), 4),
-    "white": Material((222, 222, 214), 2, edge=False),
+    "steel": Material((70, 72, 78), 3),
+    "steel_dark": Material((40, 41, 45), 3),
+    "steel_light": Material((128, 130, 136), 4),
+    "wood": Material((176, 102, 46), 5),
+    "wood_dark": Material((120, 66, 28), 4),
+    "rubber": Material((40, 40, 42), 4),
+    "white": Material((224, 224, 216), 2, edge=False),
     "red": Material((176, 34, 30), 2, edge=False),
     "brass": Material((196, 160, 80), 5),
     "hull": Material((150, 36, 30), 4),
     "bore": Material((6, 6, 6), 1, edge=False),
 }
 
-CX, CY = 8.0, 10.0
-MY = 8.6       # magazine tube axis
+U = 16.0
+S = Silhouette("m870", 2.1, -24, 98)
+Z, Y, P = S.zmm, S.ymm, S.poly
+MY = Y(161)   # magazine tube axis
 
 
 def build():
     m = Model("m870", MATERIALS, density=7)
-    B = m.box
+    k = MM(m, U)
 
     # ======================================================================
-    # barrel with ventilated rib and bead
+    # barrel with ventilated rib and bead, barrel band
     # ======================================================================
     g = "barrel"
-    m.cyl_z("barrel", CX, CY, -30.0, 0.6, 0.63, "steel", g)
-    m.cyl_z("muzzle_crown", CX, CY, -30.06, -30.0, 0.5, "steel_dark", g)
-    m.cyl_z("muzzle_bore", CX, CY, -30.1, -30.06, 0.42, "bore", g)
-    m.cyl_z("barrel_chamber", CX, CY, -2.0, 0.6, 0.72, "steel", g)
-    # vent rib: flat rib on little posts
-    m.bevel("rib", 7.72, 10.95, -29.8, 8.28, 11.12, -0.4, 0.06, "steel", g, "serration")
-    z, i = -29.6, 0
-    while z < -0.8:
-        B("rib_post_%02d" % i, 7.82, 10.5, z, 8.18, 10.98, z + 0.45, "steel", g)
-        z, i = z + 1.55, i + 1
-    m.cyl_z("bead", CX, 11.25, -29.75, -29.45, 0.14, "white", g)
-    B("bead_base", 7.9, 11.1, -29.8, 8.1, 11.2, -29.4, "steel", g)
-    # barrel band clamping onto the magazine tube
-    m.bevel("barrel_band", 7.25, MY - 0.85, -22.2, 8.75, 10.75, -21.4, 0.35, "steel", g)
-    m.pin_x("barrel_band_screw", 8.78, 9.3, -21.8, 0.16, 8.72, 8.84, "steel_light", g)
+    k.cyl("barrel", 0, Z(-24), Z(845), 9.3, "steel", g)
+    k.cyl("muzzle_bore", 0, Z(-24.6), Z(-24), 7.6, "bore", g)
+    k.bv("rib", -4, Y(73), Z(-22), 4, Y(67), Z(838), 0.6, "steel", g, "serration")
+    x, i = -10, 0
+    while x < 820:
+        k.b("rib_post_%02d" % i, -2.4, Y(80), Z(x), 2.4, Y(72), Z(x + 22), "steel", g)
+        x, i = x + 92, i + 1
+    k.cyl("bead", Y(64), Z(-20), Z(-14), 1.6, "white", g)
+    band = P([(238, 108), (281, 108), (281, 140), (238, 140)])
+    k.prof("barrel_band", band, -9, 9, "steel", g, step=8, bevel=2)
+    k.pin("band_screw", 9.5, Y(126), Z(259), 2.6, 9, 10.5, "steel_light", g)
 
     g = "magazine"
-    m.cyl_z("mag_tube", CX, MY, -21.6, 0.2, 0.72, "steel", g)
-    m.cyl_z("mag_cap", CX, MY, -23.4, -21.6, 0.84, "steel", g, "knurl")
-    m.cyl_z("mag_cap_face", CX, MY, -23.5, -23.4, 0.6, "steel_dark", g)
-    m.bevel("mag_cap_stud", 7.8, MY - 1.25, -22.9, 8.2, MY - 0.78, -22.3, 0.06, "steel_light", g)
-    B("mag_cap_stud_hole", 7.78, MY - 1.15, -22.75, 8.22, MY - 0.95, -22.45, "bore", g)
+    k.cyl("mag_tube", MY, Z(262), Z(845), 12, "steel", g)
+    k.cyl("mag_cap", MY, Z(205), Z(262), 15.5, "steel", g, "knurl")
+    k.cyl("mag_cap_face", MY, Z(200), Z(205), 11, "steel_dark", g)
+    k.cyl("mag_cap_ring", MY, Z(248), Z(262), 16, "steel_dark", g)
 
     # ======================================================================
-    # grooved walnut forend (pump) with action bars
+    # checkered wooden forend (pump) with action bars
     # ======================================================================
     g = "pump"
-    m.bevel("forend", 6.55, 7.0, -12.5, 9.45, 10.15, 1.4, 0.85, "wood", g, "wood")
-    m.bevel("forend_nose", 6.75, 7.25, -12.9, 9.25, 9.95, -12.4, 0.75, "wood", g, "wood")
-    for k in range(10):
-        z = -11.6 + k * 1.15
-        B("forend_groove_l_%d" % k, 6.53, 7.7, z, 6.55, 9.5, z + 0.42, "wood_dark", g)
-        B("forend_groove_r_%d" % k, 9.45, 7.7, z, 9.47, 9.5, z + 0.42, "wood_dark", g)
-        B("forend_groove_b_%d" % k, 7.4, 6.98, z, 8.6, 7.0, z + 0.42, "wood_dark", g)
-    m.cyl_z("forend_tube_nut", CX, MY, -13.1, -12.85, 0.55, "steel", g)
-    B("forend_nut_slot", 7.9, MY - 0.55, -13.12, 8.1, MY + 0.55, -13.08, "bore", g)
-    for side, (a, b) in (("l", (6.9, 7.08)), ("r", (8.92, 9.1))):
-        m.bevel("action_bar_" + side, a, 7.65, 1.2, b, 8.05, 8.2, 0.04, "steel_light", g, axis="x")
+    fe = P([(281, 109), (291, 101), (754, 101), (762, 109), (762, 205), (752, 213), (293, 213), (281, 202)])
+    k.prof("forend", fe, -24, 24, "wood", g, "wood", step=12, bevel=7)
+    panel = P([(410, 150), (560, 141), (720, 150), (655, 166), (720, 183), (560, 194), (410, 186),
+               (470, 168)])
+    for side, (a, b) in (("l", (-24.4, -23.6)), ("r", (23.6, 24.4))):
+        k.prof("forend_checker_" + side, panel, a, b, "wood_dark", g, "checker", step=12, t=4, bevel=0.1)
+    k.cyl("forend_nut", MY, Z(762), Z(778), 10, "steel", g)
+    for side, (a0, a1) in (("l", (-13, -11)), ("r", (11, 13))):
+        k.bv("action_bar_" + side, a0, Y(150), Z(760), a1, Y(140), Z(990), 0.4, "steel_light", g, axis="x")
 
     # ======================================================================
-    # receiver
+    # receiver, trigger plate and guard
     # ======================================================================
     g = "receiver"
-    m.bevel("receiver", 7.05, 7.35, 0.0, 8.95, 11.25, 13.0, 0.55, "steel", g,
-            text={"west": "REMINGTON", "east": "MODEL 870"})
-    B("rcv_top_flat", 7.55, 11.2, 0.4, 8.45, 11.3, 12.6, "steel", g, "serration")
-    m.bevel("rcv_front_ring", 6.95, 7.45, -0.2, 9.05, 11.15, 0.3, 0.6, "steel", g)
-    for side, (a, b) in (("l", (7.02, 7.05)), ("r", (8.95, 8.98))):
-        B("rcv_line_" + side, a, 10.35, 0.6, b, 10.45, 12.4, "steel_dark", g)
-    # ejection port with the bolt visible
-    B("ejection_port", 8.95, 8.95, 1.6, 8.97, 10.85, 6.4, "bore", g)
-    m.bevel("bolt", 8.6, 9.35, 4.7, 8.96, 10.6, 6.35, 0.06, "steel_light", g, axis="x")
-    B("bolt_extractor", 8.95, 9.6, 4.75, 8.99, 10.3, 5.0, "steel_dark", g)
-    # loading port underneath, shell lifter, follower
-    B("loading_port", 7.4, 7.33, 0.6, 8.6, 7.35, 6.6, "bore", g)
-    B("shell_lifter", 7.5, 7.31, 1.0, 8.5, 7.33, 5.8, "steel_light", g)
-    # pins (trigger plate)
-    for side, (a, b) in (("l", (6.98, 7.06)), ("r", (8.94, 9.02))):
-        m.pin_x("pin_front_" + side, (a + b) / 2, 8.0, 5.6, 0.16, a, b, "steel_light", g)
-        m.pin_x("pin_rear_" + side, (a + b) / 2, 8.0, 11.9, 0.16, a, b, "steel_light", g)
-    # trigger plate + guard (alloy)
-    m.bevel("trigger_plate", 7.2, 6.85, 5.0, 8.8, 7.45, 12.6, 0.18, "alloy", g)
-    m.bevel("tg_front", 7.5, 6.0, 6.55, 8.5, 6.95, 7.0, 0.1, "alloy", g, axis="y")
-    m.bevel("tg_bottom", 7.5, 5.55, 6.9, 8.5, 6.05, 10.3, 0.14, "alloy", g)
-    m.edge("tg_corner_f", "x", 7.52, 8.48, 5.55, 6.55, -1, -1, 0.5, "alloy", g)
-    m.bevel("tg_rear", 7.5, 5.55, 10.1, 8.5, 6.95, 10.55, 0.1, "alloy", g, axis="y")
-    m.edge("tg_corner_b", "x", 7.52, 8.48, 5.55, 10.55, -1, 1, 0.45, "alloy", g)
-    # action (slide) release lever, left, in front of the guard
-    with m.frame(("x", 15, (7.3, 6.9, 6.2))):
-        m.bevel("slide_release", 7.15, 6.3, 5.6, 7.45, 6.95, 6.6, 0.06, "alloy", g, "knurl", axis="x")
-    # cross-bolt safety behind the guard with red ring on the left
-    m.cyl_x("safety", 7.0, 9.0, 7.15, 10.95, 0.24, "alloy", g)
-    m.cyl_x("safety_ring", 6.95, 7.02, 7.15, 10.95, 0.26, "red", g)
+    rcv = P([(838, 74), (1135, 79), (1197, 90), (1238, 102), (1219, 184), (838, 182)])
+    k.prof("receiver", rcv, -17, 17, "steel", g, step=12, bevel=4)
+    k.b("rcv_mark_l", -17.3, Y(160), Z(870), -17, Y(145), Z(1080), "steel", g,
+        text={"west": "REMINGTON 870 EXPRESS MAGNUM"})
+    for side, (a0, a1) in (("l", (-17.6, -17)), ("r", (17, 17.6))):
+        k.pin("pin_front_" + side, (a0 + a1) / 2, Y(152), Z(1097), 2.6, a0, a1, "steel_light", g)
+        k.pin("pin_rear_" + side, (a0 + a1) / 2, Y(152), Z(1200), 2.6, a0, a1, "steel_light", g)
+    k.b("ejection_port", 17, Y(140), Z(880), 17.3, Y(100), Z(1010), "bore", g)
+    k.bv("bolt", 14, Y(132), Z(935), 17.2, Y(108), Z(990), 0.6, "steel_light", g, axis="x")
+    k.b("loading_port", -11, Y(182.6), Z(880), 11, Y(181.8), Z(1040), "bore", g)
+    k.b("shell_lifter", -9, Y(182.3), Z(890), 9, Y(181.5), Z(1030), "steel_light", g)
+    tp = P([(1000, 181), (1222, 181), (1222, 192), (1060, 192), (1000, 186)])
+    k.prof("trigger_plate", tp, -13, 13, "steel_dark", g, step=8, t=3, bevel=1)
+    guard = P([(1066, 190), (1084, 190), (1122, 214), (1150, 224), (1196, 226), (1206, 212), (1206, 190),
+               (1222, 190), (1220, 230), (1210, 243), (1160, 241), (1110, 228), (1080, 204)])
+    k.prof("trigger_guard", guard, -6, 6, "steel_dark", g, step=6, t=3, bevel=1.2)
+    k.prof("action_release", P([(1062, 190), (1098, 190), (1092, 198), (1070, 198)]), -14, -6,
+           "steel_dark", g, step=6, t=3, bevel=0.6)
+    k.cylx("safety", -16, 16, Y(193), Z(1210), 3.8, "steel_light", g)
+    k.cylx("safety_ring", -16.6, -16, Y(193), Z(1210), 4.2, "red", g)
 
     g = "trigger"
-    m.bevel("trigger_top", 7.72, 6.6, 8.2, 8.28, 7.0, 8.65, 0.06, "steel_light", g, axis="y")
-    with m.frame(("x", 16, (8, 6.65, 8.42))):
-        m.bevel("trigger_mid", 7.72, 5.95, 8.2, 8.28, 6.7, 8.65, 0.06, "steel_light", g, axis="y")
-    with m.frame(("x", 40, (8, 6.0, 8.25))):
-        m.bevel("trigger_tip", 7.72, 5.7, 8.05, 8.28, 6.05, 8.45, 0.06, "steel_light", g, axis="y")
+    k.prof("trigger", P([(1185, 192), (1195, 192), (1203, 214), (1201, 234), (1195, 232), (1192, 212)]),
+           -3.5, 3.5, "steel_light", g, step=6, t=3, bevel=0.6)
 
     # ======================================================================
-    # semi-pistol-grip walnut stock from overlapping slabs
+    # semi-pistol-grip stock with checkering, recoil pad
     # ======================================================================
     g = "stock"
-    m.bevel("stock_tang", 7.35, 7.6, 12.8, 8.65, 11.0, 13.4, 0.35, "steel", g)
-    with m.frame(("x", 1.6, (8, 11.0, 13.0))):
-        m.bevel("stock_comb", 7.1, 8.3, 13.0, 8.9, 11.0, 33.2, 0.6, "wood_s", g, "wood", edges="top")
-    with m.frame(("x", 7.0, (8, 9.6, 13.0))):
-        B("stock_mid", 7.11, 6.4, 13.0, 8.89, 10.3, 33.4, "wood_s", g, "wood")
-    with m.frame(("x", 17.5, (8, 6.5, 17.3))):
-        m.bevel("stock_belly", 7.12, 6.5, 17.3, 8.88, 9.2, 33.35, 0.6, "wood_s", g, "wood", edges="bottom")
-    # semi pistol grip: wrist dips down, then the belly takes over
-    with m.frame(("x", 27, (8, 7.4, 13.1))):
-        m.bevel("stock_wrist_low", 7.2, 7.4, 13.1, 8.8, 9.4, 18.2, 0.6, "wood_s", g, "wood")
-    # checkering panels on the wrist
-    with m.frame(("x", 14, (8, 8.8, 14.0))):
-        for side, (a, b) in (("l", (7.08, 7.1)), ("r", (8.9, 8.92))):
-            B("checkering_" + side, a, 7.7, 14.0, b, 9.9, 17.6, "wood_dark", g, "checker")
-    # recoil pad with white line spacer, sling stud
-    with m.frame(("x", 3.0, (8, 6.5, 33.6))):
-        B("pad_spacer", 7.12, 2.55, 33.55, 8.88, 10.6, 33.72, "white", g)
-        m.bevel("recoil_pad", 7.08, 2.5, 33.72, 8.92, 10.65, 34.65, 0.35, "rubber", g, "ribs")
-        for k, y in enumerate((3.2, 9.9)):
-            m.pin_x("pad_screw_%d" % k, 8.0, y, 34.66, 0.13, 7.9, 8.1, "steel_light", g,
-                    rot=("y", 90, (8.0, y, 34.66)))
-    with m.frame(("x", 17.5, (8, 6.5, 17.3))):
-        m.bevel("sling_stud", 7.8, 6.15, 29.6, 8.2, 6.5, 30.2, 0.06, "steel_light", g)
-        B("sling_stud_hole", 7.78, 6.25, 29.75, 8.22, 6.4, 30.05, "bore", g)
+    stock = P([(1238, 102), (1316, 128), (1389, 146), (1453, 151), (1544, 155), (1680, 169), (1857, 187),
+               (1857, 415), (1725, 360), (1589, 315), (1480, 278), (1453, 278), (1407, 302), (1380, 302),
+               (1362, 278), (1316, 219), (1271, 196), (1222, 192), (1219, 184)])
+    k.prof("stock", stock, -21, 21, "wood", g, "wood", step=14, bevel=8)
+    chk = P([(1262, 130), (1330, 140), (1420, 190), (1453, 240), (1380, 225), (1290, 170)])
+    for side, (a, b) in (("l", (-21.4, -20.6)), ("r", (20.6, 21.4))):
+        k.prof("grip_checker_" + side, chk, a, b, "wood_dark", g, "checker", step=12, t=4, bevel=0.1)
+    k.prof("grip_cap", P([(1372, 300), (1410, 300), (1408, 310), (1380, 310)]), -15, 15, "steel_dark", g,
+           step=6, t=3, bevel=1)
+    k.prof("pad_spacer", P([(1855, 188), (1861, 189), (1861, 415), (1855, 413)]), -21.5, 21.5, "white", g,
+           step=4, t=2, bevel=0.5)
+    pad = P([(1861, 189), (1905, 195), (1935, 424), (1925, 437), (1861, 415)])
+    k.prof("recoil_pad", pad, -22, 22, "rubber", g, "ribs", step=8, bevel=5)
 
     # ======================================================================
-    # spare shell held on the lifter (for the loading animation)
+    # spare shell (loading animation), at the loading port
     # ======================================================================
     g = "shell"
-    m.cyl_z("shell_hull", CX, 8.0, 1.1, 5.1, 0.42, "hull", g)
-    m.cyl_z("shell_brass", CX, 8.0, 5.1, 5.9, 0.44, "brass", g)
+    k.cyl("shell_hull", Y(160), Z(905), Z(1028), 10.3, "hull", g)
+    k.cyl("shell_brass", Y(160), Z(1028), Z(1052), 10.8, "brass", g)
 
-    m.regroup({}, pivots={"trigger": (8, 7.0, 8.42), "pump": (8, MY, -5.5), "shell": (8, 8.0, 3.5)})
+    m.regroup({}, pivots={"trigger": k.P(0, Y(192), Z(1190)), "pump": k.P(0, MY, Z(520)),
+                          "shell": k.P(0, Y(160), Z(980))})
     m.dynamic = {"pump", "trigger", "shell"}
     return m
 
 
-GRIP_POINT = (8.0, 6.8, 15.8)
+GRIP_POINT = MM(None, U).P(0, Y(250), Z(1360))
+
+
+ARMS = {
+    "grip": ((Z(1322), Y(175)), (Z(1395), Y(280))), "grip_w": 21, "grip_d": 19,
+    "trigger": (Z(1197), Y(215)),
+    "left": {"kind": "forend", "z": Z(520), "y_top": Y(101), "y_bot": Y(213), "w": 24},
+}
 
 DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.22, "tilt": 30, "push": -3.5}
+
+PUMP = 95 / U
 
 ANIM = {
     "trigger": True, "trigger_angle": 12, "mag": None,
@@ -170,8 +152,8 @@ ANIM = {
 
 def _pump(a, t0):
     a.pos("pump", t0, anims.ZERO)
-    a.pos("pump", t0 + 0.16, [0, 0, 5.8], "easeOutQuad")
-    a.pos("pump", t0 + 0.22, [0, 0, 5.8])
+    a.pos("pump", t0 + 0.16, [0, 0, PUMP], "easeOutQuad")
+    a.pos("pump", t0 + 0.22, [0, 0, PUMP])
     a.pos("pump", t0 + 0.38, anims.ZERO, "easeInQuad")
     a.track("root", "position", [(t0, anims.ZERO), (t0 + 0.16, [0, -0.3, 0.6], "easeOutQuad"),
                                  (t0 + 0.38, anims.ZERO, "easeInOutSine")])

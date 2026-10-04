@@ -1,0 +1,57 @@
+{
+ "deagle": {
+  "photo": "1.webp",
+  "crop": [
+   0,
+   0,
+   1024,
+   548
+  ],
+  "flip": false,
+  "rotation": 0.0
+ },
+ "ak47": {
+  "photo": "2.webp",
+  "crop": [
+   0,
+   60,
+   1280,
+   400
+  ],
+  "flip": false,
+  "rotation": 0.0
+ },
+ "mp5": {
+  "photo": "5.png",
+  "crop": [
+   0,
+   0,
+   600,
+   272
+  ],
+  "flip": true,
+  "rotation": 0.0
+ },
+ "m870": {
+  "photo": "6.webp",
+  "crop": [
+   0,
+   330,
+   2000,
+   1000
+  ],
+  "flip": false,
+  "rotation": 1.2615786679231151
+ },
+ "awm": {
+  "photo": "7.png",
+  "crop": [
+   0,
+   0,
+   1177,
+   330
+  ],
+  "flip": false,
+  "rotation": 0.0
+ }
+}

@@ -1,170 +1,162 @@
-"""Accuracy International AWM (.338 Lapua Magnum), olive drab folding
-thumbhole stock, fluted barrel, muzzle brake.  No optic: only the integral
-Picatinny rail it would sit on.
+"""Accuracy International AWM (.338 Lapua Magnum): green thumbhole stock,
+round action with integral rail, long barrel with muzzle brake, butt pad and
+monopod.  No optic.
 
-Real proportions: 1230 mm overall, 686 mm barrel.
-Scale: 1 unit ~= 20 mm.  Muzzle points north (-Z), bore axis x=8, y=10.
+Outlines are traced from a side photo (tools/silhouettes/awm*.png, 0.893 px
+per mm); widths come from real dimensions.  1 model unit = 20 mm.
 """
 
+import math
+
 import anims
-from bbgen import Material, Model
+from bbgen import Material, MM, Model
+from trace import Silhouette
 
 MATERIALS = {
-    "steel": Material((44, 45, 50), 3),
-    "steel_dark": Material((28, 28, 31), 3),
-    "steel_light": Material((100, 101, 107), 4),
-    "od": Material((88, 96, 62), 4),              # olive drab stock
-    "od_dark": Material((66, 72, 46), 4),
-    "alu": Material((54, 56, 50), 3),             # chassis
-    "rubber": Material((26, 26, 26), 4),
+    "steel": Material((48, 50, 54), 3),
+    "steel_dark": Material((30, 31, 34), 3),
+    "steel_light": Material((112, 114, 120), 4),
+    "green": Material((96, 116, 62), 6),
+    "green_dark": Material((72, 88, 46), 4),
+    "rubber": Material((28, 28, 29), 4),
     "brass": Material((184, 148, 70), 5),
-    "red": Material((176, 34, 30), 2, edge=False),
     "white": Material((222, 222, 214), 2, edge=False),
+    "red": Material((176, 34, 30), 2, edge=False),
     "bore": Material((6, 6, 6), 1, edge=False),
 }
 
-CX, CY = 8.0, 10.0
+U = 20.0
+S = Silhouette("awm", 0.893, 32, 96)
+Z, Y = S.zmm, S.ymm
 
 
 def build():
     m = Model("awm", MATERIALS, density=7)
-    B = m.box
+    k = MM(m, U)
 
     # ======================================================================
-    # muzzle brake (two rows of ports) and fluted barrel
+    # barrel: brake with two port rows, hex collar, taper, fluted barrel
     # ======================================================================
     g = "barrel"
-    m.cyl_z("brake_core", CX, CY, -31.0, -28.6, 0.6, "steel_dark", g)
-    m.ring_z("brake_ports_a", CX, CY, -30.6, -29.95, 0.78, 0.18, 0.5, "steel", g)
-    m.ring_z("brake_ports_b", CX, CY, -29.65, -29.0, 0.78, 0.18, 0.5, "steel", g)
-    for k, (z0, z1) in enumerate(((-31.05, -30.6), (-29.95, -29.65), (-29.0, -28.6))):
-        m.cyl_z("brake_ring_%d" % k, CX, CY, z0, z1, 0.78, "steel", g)
-    m.cyl_z("muzzle_bore", CX, CY, -31.1, -31.05, 0.22, "bore", g)
-    m.cyl_z("barrel_front", CX, CY, -28.6, -14.0, 0.6, "steel", g)
-    m.cyl_z("barrel_rear", CX, CY, -14.0, 0.2, 0.7, "steel", g)
-    m.cyl_z("barrel_taper", CX, CY, -14.3, -13.7, 0.66, "steel", g)
-    for k, ang in enumerate((0, 60, 120, 180, 240, 300)):
-        with m.frame(("z", ang, (CX, CY, -10))):
-            B("flute_f_%d" % k, 7.88, 10.55, -27.4, 8.12, 10.62, -15.0, "steel_dark", g)
-            B("flute_r_%d" % k, 7.86, 10.66, -13.0, 8.14, 10.72, -2.0, "steel_dark", g)
+    rings = ((32, 40, 12.5), (40, 47, 10.5), (47, 55, 12.5), (55, 62, 10.5), (62, 70, 12.5))
+    for i, (a, b, r) in enumerate(rings):
+        k.cyl("brake_%d" % i, 0, Z(a), Z(b), r, "steel_dark" if r < 12 else "steel", g)
+    k.cyl("muzzle_bore", 0, Z(31.5), Z(32), 5.5, "bore", g)
+    k.cyl("brake_collar", 0, Z(70), Z(76), 11.5, "steel", g)
+    k.cyl("barrel_nut", 0, Z(76), Z(97), 15.5, "steel", g, "knurl")
+    k.cyl("barrel_taper", 0, Z(97), Z(120), 11.5, "steel", g)
+    k.cyl("barrel", 0, Z(120), Z(470), 9.8, "steel", g)
+    k.cyl("barrel_rear", 0, Z(470), Z(605), 11.2, "steel", g)
+    for i, ang in enumerate((0, 60, 120, 180, 240, 300)):
+        with k.frame("z", ang, 0, 0, Z(300)):
+            k.b("flute_%d" % i, -1.8, 9.4, Z(135), 1.8, 10.0, Z(455), "steel_dark", g)
 
     # ======================================================================
-    # action with integral rail, ejection port
+    # action: traced side outline, round body, integral rail, bolt
     # ======================================================================
     g = "action"
-    m.cyl_z("action_body", CX, 10.15, 0.0, 11.2, 0.9, "steel", g)
-    m.bevel("action_flat", 7.2, 9.05, 0.0, 8.8, 10.2, 11.2, 0.15, "steel", g,
-            text={"west": "AWM .338 LAPUA MAG"})
-    m.bevel("recoil_lug", 7.25, 8.5, 0.2, 8.75, 9.1, 1.0, 0.1, "steel", g)
-    m.rail_z("rail", 7.3, 8.7, 11.42, -1.0, 11.0, "steel", g, period=0.5, tooth=0.3, h=0.2, neck=0.25)
-    B("rail_numbers", 7.29, 11.1, -0.8, 7.31, 11.25, 10.8, "white", g)
-    B("ejection_port", 8.88, 9.85, 4.4, 8.91, 10.85, 7.6, "bore", g)
-    m.cyl_z("bolt_body_seen", CX, 10.25, 4.5, 7.5, 0.72, "steel_light", g)
-    for side, (a, b) in (("l", (7.15, 7.22)), ("r", (8.78, 8.85))):
-        m.pin_x("action_screw_f_" + side, (a + b) / 2, 9.4, 1.6, 0.15, a, b, "steel_light", g)
-        m.pin_x("action_screw_b_" + side, (a + b) / 2, 9.4, 10.4, 0.15, a, b, "steel_light", g)
+    act = S.rings([(586, 84), (842, 84), (842, 126), (586, 126)], src="metal")
+    k.prof("action", act, -17, 17, "steel", g, step=8, bevel=7)
+    k.cyl("action_round", -6, Z(600), Z(790), 17.5, "steel", g)
+    rail_lo, rail_hi = Y(86), Y(79)
+    k.b("rail_base", -10.5, rail_lo, Z(593), 10.5, rail_lo + 3, Z(800), "steel", g)
+    m.teeth_z("rail_t", "up", k.X(-10.5), k.X(10.5), k.Y(rail_lo + 3), (rail_hi - rail_lo - 3) / U,
+              k.Z(Z(595)), k.Z(Z(800)), "steel", g, period=10 / U, tooth=5.2 / U)
+    k.b("rail_numbers", -10.6, rail_lo + 0.5, Z(600), -10.5, rail_lo + 2.5, Z(795), "white", g)
+    k.b("action_mark", -17.2, Y(108), Z(640), -17, Y(98), Z(760), "steel", g,
+        text={"west": "AWM .338 LAPUA"})
+    k.b("ejection_port", 17, Y(104), Z(690), 17.3, Y(92), Z(760), "bore", g)
+    for side, (a0, a1) in (("l", (-17.6, -17)), ("r", (17, 17.6))):
+        k.pin("action_screw_f_" + side, (a0 + a1) / 2, Y(112), Z(615), 2.6, a0, a1, "steel_light", g)
+        k.pin("action_screw_r_" + side, (a0 + a1) / 2, Y(112), Z(780), 2.6, a0, a1, "steel_light", g)
 
     g = "bolt"
-    m.cyl_z("bolt_shroud", CX, 10.25, 11.2, 12.7, 0.68, "steel_dark", g)
-    m.cyl_z("bolt_shroud_cap", CX, 10.25, 12.7, 12.9, 0.5, "steel_dark", g)
-    B("cocking_indicator", 7.9, 10.95, 12.2, 8.1, 11.1, 12.9, "red", g)
-    with m.frame(("z", -12, (8.75, 10.3, 10.6))):
-        m.cyl_x("bolt_handle", 8.6, 10.6, 10.3, 10.6, 0.2, "steel_light", g)
-        m.cyl_x("bolt_knob", 10.5, 11.6, 10.3, 10.6, 0.55, "steel_dark", g, "knurl")
-        m.cyl_x("bolt_knob_cap", 11.6, 11.75, 10.3, 10.6, 0.4, "steel_dark", g)
+    by = Y(100)
+    k.cyl("bolt_body", by, Z(700), Z(758), 10.5, "steel_light", g, x=4)
+    k.cyl("bolt_shroud", by, Z(836), Z(858), 13.5, "steel_dark", g)
+    k.cyl("bolt_shroud_cap", by, Z(858), Z(864), 10, "steel_dark", g)
+    k.b("cocking_indicator", -2, by + 9, Z(855), 2, by + 13, Z(866), "red", g)
+    with k.frame("z", -25, 17, by, Z(826)):
+        k.cylx("bolt_handle", 14, 58, by, Z(826), 4, "steel_light", g)
+        k.cylx("bolt_knob", 50, 74, by, Z(826), 10, "steel_dark", g, "knurl")
     # three-position safety (right, rear)
-    with m.frame(("x", -20, (8.9, 9.6, 11.6))):
-        m.bevel("safety_lever", 8.85, 9.45, 11.0, 9.1, 9.8, 12.4, 0.05, "steel_dark", g, "knurl", axis="x")
+    with k.frame("x", -20, 17, Y(108), Z(845)):
+        k.bv("safety_lever", 16.5, Y(112), Z(832), 20, Y(104), Z(858), 1, "steel_dark", g, "knurl", axis="x")
 
     # ======================================================================
-    # chassis + olive drab forend
+    # stock: traced green outline (forend, centre section, thumbhole butt)
     # ======================================================================
     g = "stock"
-    m.bevel("forend", 6.8, 7.4, -10.2, 9.2, 9.75, 3.2, 0.55, "od", g)
-    m.bevel("forend_nose", 6.95, 7.6, -10.6, 9.05, 9.55, -10.1, 0.5, "od", g)
-    m.bevel("channel_wall_l", 6.85, 9.6, -10.0, 7.25, 10.25, 3.0, 0.15, "od", g, edges="top")
-    m.bevel("channel_wall_r", 8.75, 9.6, -10.0, 9.15, 10.25, 3.0, 0.15, "od", g, edges="top")
-    for k in range(4):
-        z = -8.8 + k * 2.4
-        m.cyl_x("vent_l_%d" % k, 6.78, 6.82, 8.6, z, 0.42, "od_dark", g)
-        m.cyl_x("vent_r_%d" % k, 9.18, 9.22, 8.6, z, 0.42, "od_dark", g)
-    m.bevel("bipod_stud", 7.75, 6.95, -9.4, 8.25, 7.45, -8.6, 0.08, "steel_light", g)
-    B("bipod_stud_hole", 7.73, 7.05, -9.15, 8.27, 7.3, -8.85, "bore", g)
-    # chassis mid section around the action / magazine well
-    m.bevel("chassis_mid", 6.9, 6.7, 3.0, 9.1, 9.3, 11.6, 0.35, "alu", g)
-    for side, (a, b) in (("l", (6.84, 6.9)), ("r", (9.1, 9.16))):
-        m.bevel("side_panel_" + side, a, 7.0, -9.4, b, 9.3, 2.6, 0.12, "od_dark", g, "stipple", axis="x")
-        for k, z in enumerate((-8.0, -3.4, 1.4, 4.4, 10.4)):
-            m.pin_x("panel_screw_%s_%d" % (side, k), (a + b) / 2, 8.15, z, 0.14,
-                    a - 0.04 if side == "l" else a, b if side == "l" else b + 0.04, "steel_light", g)
-    # trigger guard and magazine release lever
-    m.bevel("tg_front", 7.55, 5.85, 7.3, 8.45, 6.75, 7.75, 0.1, "alu", g, axis="y")
-    m.bevel("tg_bottom", 7.55, 5.45, 7.6, 8.45, 5.9, 11.6, 0.12, "alu", g)
-    m.edge("tg_corner", "x", 7.57, 8.43, 5.45, 7.3, -1, -1, 0.5, "alu", g)
-    with m.frame(("x", 20, (8, 6.6, 6.9))):
-        m.bevel("mag_release", 7.55, 5.9, 6.75, 8.45, 6.7, 7.2, 0.08, "steel_dark", g, "knurl")
+    # outline measured on the photo (px), thumbhole as an ellipse
+    stock = [S.poly([(447, 107), (776, 107), (784, 112), (836, 113), (1066, 113), (1069, 116), (1069, 216),
+                     (1064, 219), (1050, 219), (1046, 201), (1040, 196), (968, 196), (956, 204),
+                     (940, 214), (920, 220), (885, 228), (862, 233), (846, 233), (841, 228), (834, 196),
+                     (828, 168), (824, 154), (790, 152), (782, 170), (752, 170), (745, 159), (735, 155),
+                     (726, 160), (722, 167), (676, 164), (660, 159), (640, 151), (620, 149), (452, 148),
+                     (444, 143), (441, 135), (441, 117)]),
+             S.poly([(892 + 25 * math.cos(a * math.pi / 8), 170 + 22 * math.sin(a * math.pi / 8))
+                     for a in range(16)])]
+    k.prof("stock", stock, -25, 25, "green", g, step=10, bevel=6)
+    # barrel channel walls and the long vent slot
+    k.b("channel", -14, Y(104), Z(452), 14, Y(102), Z(600), "green_dark", g)
+    for side, x0 in (("l", -25.4), ("r", 25)):
+        k.b("vent_slot_" + side, x0, Y(122), Z(462), x0 + 0.4, Y(117), Z(600), "green_dark", g)
+    # screws (traced positions)
+    for i, (sx, sy, w) in enumerate(((480, 140, 25), (575, 140, 25), (690, 152, 25), (783, 153, 25),
+                                     (862, 133, 25), (1017, 135, 25), (1048, 188, 25), (860, 222, 25))):
+        for side, s in (("l", -1), ("r", 1)):
+            k.pin("screw_%d_%s" % (i, side), s * (w + 0.3), Y(sy), Z(sx), 3.4,
+                  s * w - 0.2 if s > 0 else -w - 0.8, w + 0.8 if s > 0 else -w + 0.2, "steel_light", g)
+    # front sling loop and QD cup
+    k.cylx("sling_loop", -27, 27, Y(128), Z(458), 4.2, "steel_dark", g)
+    k.cylx("qd_cup", -29, 29, Y(126), Z(1068), 6.5, "steel_dark", g)
+
+    # trigger guard and magazine release (traced)
+    guard = [S.poly([(786, 150), (783, 165), (788, 178), (800, 186), (818, 187), (832, 180), (837, 168),
+                     (834, 150)]),
+             S.poly([(796, 153), (794, 166), (800, 176), (812, 179), (824, 175), (828, 165), (825, 153)])]
+    k.prof("trigger_guard", guard, -7, 7, "steel_dark", g, step=3, t=4, bevel=1.6)
 
     g = "trigger"
-    m.bevel("trigger_top", 7.72, 6.3, 9.1, 8.28, 6.7, 9.5, 0.06, "steel_light", g, axis="y")
-    with m.frame(("x", 16, (8, 6.35, 9.3))):
-        m.bevel("trigger_mid", 7.72, 5.75, 9.1, 8.28, 6.4, 9.5, 0.06, "steel_light", g, axis="y")
-    with m.frame(("x", 40, (8, 5.8, 9.15))):
-        m.bevel("trigger_tip", 7.72, 5.5, 8.95, 8.28, 5.85, 9.35, 0.06, "steel_light", g, axis="y")
+    tx, ty = Z(806), Y(152)
+    k.bv("trigger_top", -3, ty - 6, tx - 3, 3, ty + 2, tx + 3, 0.6, "steel_light", g, axis="y")
+    with k.frame("x", 18, 0, ty - 6, tx):
+        k.bv("trigger_mid", -3, ty - 16, tx - 3, 3, ty - 5, tx + 3, 0.6, "steel_light", g, axis="y")
+    with k.frame("x", 42, 0, ty - 15, tx - 1):
+        k.bv("trigger_tip", -3, ty - 22, tx - 4, 3, ty - 14, tx + 2, 0.6, "steel_light", g, axis="y")
 
     # ======================================================================
-    # thumbhole butt (folding), adjustable cheek piece, monopod
+    # butt pad, spacers, monopod (traced)
     # ======================================================================
-    g = "butt"
-    with m.frame(("x", -16, (8, 7.0, 12.6))):
-        m.bevel("grip", 7.05, 2.7, 11.5, 8.95, 7.2, 13.7, 0.45, "od", g, "stipple", axis="y")
-        m.bevel("grip_cap", 7.1, 2.45, 11.55, 8.9, 2.75, 13.65, 0.2, "od_dark", g, axis="y")
-    m.bevel("grip_heel", 7.15, 2.8, 12.6, 8.85, 4.2, 18.2, 0.4, "od", g)
-    m.bevel("bridge", 7.15, 9.0, 11.4, 8.85, 10.45, 17.8, 0.45, "od", g, edges="top")
-    m.bevel("thumbhole_post", 7.15, 3.8, 16.4, 8.85, 9.4, 18.0, 0.4, "od", g)
-    # folding hinge
-    for k, y in enumerate((5.0, 7.0, 9.0)):
-        m.cyl_z("hinge_knuckle_%d" % k, 9.0, y, 17.6, 18.5, 0.32, "steel_dark", g)
-    m.bevel("butt_body", 7.1, 3.1, 18.0, 8.9, 10.45, 30.2, 0.45, "od", g)
-    for side, (a, b) in (("l", (7.08, 7.1)), ("r", (8.9, 8.92))):
-        B("butt_recess_" + side, a, 4.4, 19.6, b, 9.0, 28.6, "od_dark", g)
-    # adjustable cheek piece on two posts with a locking knob
-    m.bevel("cheek_piece", 7.2, 10.95, 19.0, 8.8, 12.0, 28.8, 0.4, "od", g, edges="top")
-    for k, z in enumerate((20.4, 27.2)):
-        m.cyl_z("cheek_post_%d" % k, CX, 10.7, z, z + 0.6, 0.25, "steel_light", g)
-    m.cyl_x("cheek_knob", 6.45, 7.1, 9.8, 20.7, 0.42, "steel_dark", g, "knurl")
-    # spacers and butt pad
-    B("butt_spacer_a", 7.15, 3.2, 30.2, 8.85, 10.4, 30.45, "steel_dark", g)
-    B("butt_spacer_b", 7.15, 3.2, 30.45, 8.85, 10.4, 30.7, "od_dark", g)
-    m.bevel("butt_pad", 7.05, 3.0, 30.7, 8.95, 10.6, 31.6, 0.35, "rubber", g, "ribs")
-    # monopod
-    m.bevel("monopod_housing", 7.6, 2.6, 26.6, 8.4, 3.2, 28.2, 0.15, "steel_dark", g)
-    m.cyl_x("monopod_wheel", 7.45, 8.55, 2.4, 27.4, 0.5, "steel_dark", g, "knurl")
-    m.bevel("monopod_leg", 7.8, 1.0, 27.15, 8.2, 2.6, 27.65, 0.08, "steel_light", g, axis="y")
-    m.bevel("monopod_foot", 7.55, 0.7, 26.9, 8.45, 1.05, 27.9, 0.12, "rubber", g, axis="y")
-    # QD sling cups
-    m.pin_x("qd_cup_front_l", 6.8, 8.6, -6.0, 0.36, 6.7, 6.86, "steel_dark", g)
-    m.pin_x("qd_cup_butt_l", 7.0, 4.6, 26.4, 0.36, 6.9, 7.12, "steel_dark", g)
+    g = "stock"
+    pad = S.rings([(1060, 92), (1140, 92), (1140, 240), (1060, 240)], src="metal")
+    k.prof("butt_pad", pad, -29, 29, "rubber", g, "ribs", step=8, bevel=6)
+    mono = S.rings([(995, 196), (1058, 196), (1058, 236), (995, 236)], src="metal")
+    k.prof("monopod", mono, -10, 10, "steel_dark", g, "knurl", step=3, bevel=2)
 
     # ======================================================================
-    # 5 round magazine
+    # 5 round magazine (traced bottom)
     # ======================================================================
     g = "magazine"
-    m.bevel("mag_body", 7.32, 6.2, 3.6, 8.68, 9.2, 6.8, 0.15, "steel_dark", g, axis="y")
-    for k in range(3):
-        y = 6.6 + k * 0.8
-        B("mag_rib_l_%d" % k, 7.28, y, 3.8, 7.32, y + 0.3, 6.6, "steel_dark", g)
-        B("mag_rib_r_%d" % k, 8.68, y, 3.8, 8.72, y + 0.3, 6.6, "steel_dark", g)
-    B("mag_round", 7.55, 9.2, 3.8, 8.45, 9.6, 6.6, "brass", g)
-    m.cyl_z("mag_round_tip", CX, 9.4, 3.3, 3.8, 0.25, "brass", g)
-    m.bevel("mag_floor", 7.25, 5.95, 3.5, 8.75, 6.25, 6.95, 0.1, "steel", g, axis="y")
+    mag = S.rings([(674, 150), (776, 150), (776, 194), (674, 194)], src="metal")
+    k.prof("mag_floor", mag, -18, 18, "steel_dark", g, step=4, bevel=2)
+    k.bv("mag_body", -16, Y(162), Z(690), 16, Y(105), Z(765), 1.2, "steel_dark", g)
+    k.b("mag_round", -6, Y(105), Z(694), 6, Y(98), Z(762), "brass", g)
 
-    m.regroup({}, pivots={"trigger": (8, 6.7, 9.3), "bolt": (8, 10.25, 10.6),
-                          "magazine": (8, 8.0, 5.2)})
+    m.regroup({}, pivots={"trigger": k.P(0, ty, tx), "bolt": k.P(0, by, Z(826)),
+                          "magazine": k.P(0, Y(150), Z(725))})
     m.dynamic = {"bolt", "trigger", "magazine"}
     return m
 
 
-GRIP_POINT = (8.0, 4.8, 13.2)
+GRIP_POINT = MM(None, U).P(0, Y(185), Z(880))
+
+
+ARMS = {
+    "grip": ((Z(848), Y(150)), (Z(857), Y(228))), "grip_w": 25, "grip_d": 17,
+    "trigger": (Z(806), Y(166)),
+    "left": {"kind": "forend", "z": Z(540), "y_top": Y(107), "y_bot": Y(148), "w": 25},
+}
 
 DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.22, "tilt": 30, "push": -4.0}
 
@@ -182,8 +174,8 @@ def _bolt(a, t0):
     a.rot("bolt", t0, anims.ZERO)
     a.rot("bolt", t0 + 0.15, [0, 0, 62], "easeOutQuad")
     a.pos("bolt", t0 + 0.15, anims.ZERO)
-    a.pos("bolt", t0 + 0.38, [0, 0, 6.0], "easeOutQuad")
-    a.pos("bolt", t0 + 0.48, [0, 0, 6.0])
+    a.pos("bolt", t0 + 0.38, [0, 0, 5.0], "easeOutQuad")
+    a.pos("bolt", t0 + 0.48, [0, 0, 5.0])
     a.pos("bolt", t0 + 0.7, anims.ZERO, "easeInQuad")
     a.rot("bolt", t0 + 0.7, [0, 0, 62])
     a.rot("bolt", t0 + 0.82, anims.ZERO, "easeInQuad")

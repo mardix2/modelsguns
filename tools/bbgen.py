@@ -111,6 +111,7 @@ class Model:
         self.name = name
         self.materials = materials
         self.density = density  # texels per model unit
+        self.group_density = {}  # bone -> texels per unit override (e.g. arms)
         self.cubes = []
         self.groups = []  # ordered group names (become GeckoLib bones)
         self.pivots = {}  # group -> pivot (animation centre)
@@ -328,6 +329,111 @@ class Model:
         if pivots:
             self.pivots.update({k: list(v) for k, v in pivots.items()})
 
+    def profile(self, name, pts, x0, x1, mat, group, pattern=None, step=0.4, t=None, bevel=None,
+                fill_mat=None, open_edges=()):
+        """Extrude a side profile between x0 and x1.
+
+        `pts` is a polygon of (z, y) points, or a list of such rings (outer
+        outline plus holes, even-odd rule).  The inside is filled with vertical
+        strips; every outline edge gets a strip rotated about X lying exactly
+        on the outline (chamfered on its outer corners), so slanted and curved
+        outlines come out smooth instead of stair-stepped."""
+        rings = pts if pts and isinstance(pts[0][0], (list, tuple)) else [pts]
+        rings = [r for r in rings if len(r) >= 3]
+        t = t if t is not None else max(step * 1.1, 0.3)
+        bevel = min(0.35 * (x1 - x0), t * 0.9) if bevel is None else bevel
+        fill = fill_mat or self.material_variant(mat, "_fill", (1.0, 0))
+        if fill_mat is None:
+            self.materials[fill].edge = False
+        edges = [(r[i], r[(i + 1) % len(r)]) for r in rings for i in range(len(r))]
+
+        def intervals(z):
+            ys = []
+            for (z0, y0), (z1, y1) in edges:
+                if (z0 <= z < z1) or (z1 <= z < z0):
+                    ys.append(y0 + (y1 - y0) * (z - z0) / (z1 - z0))
+            ys.sort()
+            return [(ys[k], ys[k + 1]) for k in range(0, len(ys) - 1, 2)]
+
+        def inside(z, y):
+            c = False
+            for (z0, y0), (z1, y1) in edges:
+                if (z0 <= z < z1) or (z1 <= z < z0):
+                    if y < y0 + (y1 - y0) * (z - z0) / (z1 - z0):
+                        c = not c
+            return c
+
+        zmin = min(p[0] for r in rings for p in r)
+        zmax = max(p[0] for r in rings for p in r)
+        # column boundaries: a regular grid plus every outline vertex, so no
+        # column straddles a corner (that would leave notches in the fill)
+        cuts = [round(p[0], 5) for r in rings for p in r] + \
+            [zmin + i * step for i in range(int((zmax - zmin) / step) + 1)] + [zmax]
+        # steep edges: narrower columns so the edge strips cover the notches
+        for (za_, ya_), (zb_, yb_) in edges:
+            n = int(abs(yb_ - ya_) / (0.8 * t))
+            cuts += [za_ + (zb_ - za_) * i / (n + 1) for i in range(1, n + 1)]
+        cuts = sorted(set(cuts))
+        bounds = [cuts[0]]
+        for c in cuts[1:]:
+            if c - bounds[-1] > min(step * 0.25, 0.06) or c == cuts[-1]:
+                bounds.append(c)
+        k = 0
+        for z, z2 in zip(bounds, bounds[1:]):
+            mids = intervals((z + z2) / 2)
+            ends = intervals(z + 1e-4) + intervals(z2 - 1e-4)
+            for lo, hi in mids:
+                for elo, ehi in ends:
+                    if elo < hi and ehi > lo:
+                        lo, hi = max(lo, elo), min(hi, ehi)
+                if hi - lo > 0.02:
+                    self.box("%s_f%03d" % (name, k), x0 + 0.01, lo, z, x1 - 0.01, hi, z2, fill, group, pattern)
+                    k += 1
+        ei = 0
+        for (za, ya), (zb, yb) in edges:
+            ei += 1
+            if ei - 1 in open_edges:
+                continue
+            dz, dy = zb - za, yb - ya
+            L = math.hypot(dz, dy)
+            if L < 1e-6:
+                continue
+            ang = math.degrees(math.atan2(-dy, dz))
+            nz, ny = math.sin(math.radians(ang)), math.cos(math.radians(ang))
+            mz, my = (za + zb) / 2, (ya + yb) / 2
+            probe = min(t * 0.5, 0.05)
+            inward_is_plus = inside(mz + nz * probe, my + ny * probe)
+            # keep the strip inside the part: no thicker than the part is deep
+            # behind this edge (thin guards, rings, beavertails)
+            sgn = 1 if inward_is_plus else -1
+            t_e = t
+            for f in (0.15, 0.5, 0.85):
+                pz, py = za + dz * f, ya + dy * f
+                d = probe
+                while d < t and inside(pz + sgn * nz * d, py + sgn * ny * d):
+                    d += t / 24
+                t_e = min(t_e, max(d * 0.92, probe))
+            e = 0.02
+            with self.frame(("x", ang, (0, ya, za))):
+                y_lo, y_hi = (ya, ya + t_e) if inward_is_plus else (ya - t_e, ya)
+                nm = "%s_e%03d" % (name, ei - 1)
+                if L < 2.5 * bevel or bevel < 0.04 or t_e < bevel * 1.2:
+                    # short edge: a plain strip is enough
+                    self.box(nm, x0 + 0.003, y_lo, za - e, x1 - 0.003, y_hi, za + L + e, fill, group, pattern)
+                    continue
+                # inner part full width, outer band narrowed, two chamfers
+                s = 1 if inward_is_plus else -1
+                yo = ya                      # outline (outer face)
+                yb = ya + s * bevel          # end of the chamfer band
+                yi = ya + s * t_e            # inner face
+                self.box(nm, x0, min(yb, yi), za - e, x1, max(yb, yi), za + L + e, fill, group, pattern)
+                self.box(nm + "_o", x0 + bevel, min(yo, yb), za - e + 0.002, x1 - bevel, max(yo, yb),
+                         za + L + e - 0.002, fill, group, pattern)
+                for sx, cx in ((-1, x0), (1, x1)):
+                    self.edge("%s_ch%d" % (nm, sx + 1), "z", za - e + 0.004, za + L + e - 0.004, cx, yo,
+                              sx, -s, bevel, fill, group)
+        return self
+
     def chain(self, top, seg_len, angles, axis="x"):
         """Frames for a curved part (e.g. a magazine) built from segments.
 
@@ -393,7 +499,7 @@ class Model:
         sx, sy, sz = (c.to[i] - c.frm[i] for i in range(3))
         w, h = {"north": (sx, sy), "south": (sx, sy), "east": (sz, sy),
                 "west": (sz, sy), "up": (sx, sz), "down": (sx, sz)}[face]
-        d = self.density
+        d = self.group_density.get(c.group, self.density)
         return max(1, int(round(w * d))), max(1, int(round(h * d)))
 
     def hidden_faces(self):
@@ -993,3 +1099,66 @@ def save_json(obj, path):
     with open(path, "w") as fh:
         json.dump(obj, fh, indent=1)
         fh.write("\n")
+
+
+class MM:
+    """Millimetre front-end for a Model: design parts from real dimensions.
+
+    Coordinates are in mm with the muzzle at z=0 (pointing -Z), the bore at
+    y=0 and the centre line at x=0; `unit` is how many mm one model unit is."""
+
+    def __init__(self, model, unit):
+        self.m = model
+        self.u = float(unit)
+
+    def X(self, v):
+        return 8 + v / self.u
+
+    def Y(self, v):
+        return 10 + v / self.u
+
+    def Z(self, v):
+        return v / self.u
+
+    def P(self, x, y, z):
+        return (self.X(x), self.Y(y), self.Z(z))
+
+    def b(self, name, x0, y0, z0, x1, y1, z1, mat, g, pattern=None, text=None):
+        return self.m.box(name, self.X(x0), self.Y(y0), self.Z(z0), self.X(x1), self.Y(y1), self.Z(z1),
+                          mat, g, pattern, None, text)
+
+    def bv(self, name, x0, y0, z0, x1, y1, z1, bev, mat, g, pattern=None, axis="z", edges=None, text=None):
+        return self.m.bevel(name, self.X(x0), self.Y(y0), self.Z(z0), self.X(x1), self.Y(y1), self.Z(z1),
+                            bev / self.u, mat, g, pattern, axis, text=text, edges=edges)
+
+    def prof(self, name, pts, w0, w1, mat, g, pattern=None, step=5.0, t=None, bevel=None, open_edges=()):
+        if pts and isinstance(pts[0][0], (list, tuple)):
+            conv = [[(self.Z(z), self.Y(y)) for z, y in r] for r in pts]
+        else:
+            conv = [(self.Z(z), self.Y(y)) for z, y in pts]
+        if not conv:
+            return
+        self.m.profile(name, conv, self.X(w0), self.X(w1), mat, g,
+                       pattern, step=step / self.u, t=None if t is None else t / self.u,
+                       bevel=None if bevel is None else bevel / self.u, open_edges=open_edges)
+
+    def cyl(self, name, y, z0, z1, r, mat, g, pattern=None, x=0.0):
+        self.m.cyl_z(name, self.X(x), self.Y(y), self.Z(z0), self.Z(z1), r / self.u, mat, g, pattern)
+
+    def cylx(self, name, x0, x1, y, z, r, mat, g, pattern=None):
+        self.m.cyl_x(name, self.X(x0), self.X(x1), self.Y(y), self.Z(z), r / self.u, mat, g, pattern)
+
+    def pin(self, name, x, y, z, r, x0, x1, mat, g):
+        self.m.pin_x(name, self.X(x), self.Y(y), self.Z(z), r / self.u, self.X(x0), self.X(x1), mat, g)
+
+    def edge(self, name, axis, l0, l1, c1, c2, s1, s2, b, mat, g):
+        """edge() with mm inputs; l0/l1 along `axis`, (c1, c2) the corner."""
+        conv = {"x": (self.X, self.Y, self.Z), "y": (self.Y, self.Z, self.X), "z": (self.Z, self.X, self.Y)}
+        fl, f1, f2 = conv[axis]
+        return self.m.edge(name, axis, fl(l0), fl(l1), f1(c1), f2(c2), s1, s2, b / self.u, mat, g)
+
+    def frame(self, axis, deg, x, y, z):
+        return self.m.frame((axis, deg, self.P(x, y, z)))
+
+    def pivot(self, x, y, z):
+        return self.P(x, y, z)

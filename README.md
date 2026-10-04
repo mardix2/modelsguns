@@ -17,43 +17,43 @@
 | AI AWM .338 | `awm` | 406 | bolt, trigger, magazine | см. ниже |
 
 Только само оружие: без прицелов, фонарей и прочего обвеса (у AWM — только
-планка под оптику). Пропорции взяты из реальных размеров (длина, ствол, высота).
+планка под оптику). AK-47, Desert Eagle, MP5, Remington 870 и AWM построены по
+контурам с референсных фото (силуэты лежат в `tools/silhouettes/`, сами фото в
+репозиторий не входят): контур каждой детали снят с фото в миллиметрах, ширина —
+по реальным размерам. MP5 сделан как на фото — с постоянным прикладом (A2).
 
-## Анимации
+## Анимации и руки
 
-Только оружие, без рук. Плавность задана через `easing` GeckoLib, всё движение
-ствола целиком идёт через кость `root`, которая вращается вокруг рукояти. Превью
-каждой анимации лежат в `previews/anim/<id>_<анимация>.gif`.
+У каждого ствола в модели есть **руки от первого лица** — кости `right_arm`
+(правая рука на рукояти, указательный палец на спуске) и `left_arm` (левая на
+цевье, у пистолетов — обхватывает правую). Перчатки и рукава, реальный размер.
+Руки рисуются только от первого лица: `GunRenderer` из примера скрывает обе кости
+в инвентаре, на земле и от третьего лица.
 
-| id | анимации (`animation.<id>.<имя>`) |
-|---|---|
-| `mk18` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, shoot_last, idle_empty, firemode |
-| `glock17` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, shoot_last, idle_empty |
-| `ak47` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, firemode |
-| `deagle` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, shoot_last, idle_empty |
-| `mp5a5` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty |
-| `m870` | idle, draw, holster, sprint, shoot, inspect, pump, reload, reload_start, reload_end |
-| `awm` | idle, draw, holster, sprint, shoot, inspect, reload, reload_empty, bolt |
+Все анимации — `animation.<id>.<имя>`, превью от первого лица (красный крестик —
+центр экрана): `previews/anim/<id>_<имя>.gif`.
 
-- **Зацикленные:** `idle` (лёгкое «дыхание»), `sprint` (ствол опущен и
-  покачивается), `idle_empty` (затвор/кожух остаётся на задержке).
-- **shoot:** спуск, отдача с подбросом, цикл затвора/кожуха (у пистолетов ещё и
-  ствол опускается, у Desert Eagle взводится курок).
-- **shoot_last:** последний выстрел, затвор встаёт на задержку. После него
-  держите `idle_empty`.
-- **reload / reload_empty:** наклон оружия, нажатие кнопки, магазин выпадает,
-  новый вставляется с толчком. В `reload_empty` дополнительно: у Glock и Desert
-  Eagle сбрасывается затворная задержка, у MK18 закрывается затвор, у AK
-  передёргивается затвор, у MP5 «HK slap», у AWM цикл затвора.
-- **inspect:** оружие поворачивается одним, затем другим боком; частичная
-  проверка патронника и магазина.
-- **draw / holster:** доставание и убирание.
-- **Особые:** `firemode` (переводчик MK18 и AK); `pump`, `reload_start`,
-  `reload` и `reload_end` у Remington (`reload` проигрывается по разу на каждый
-  патрон); `bolt` у AWM.
+| Что | Имя | Цикл |
+|---|---|---|
+| 1. Покой | `idle` | да |
+| 2. Выстрел от бедра | `shoot` (`shoot_last` — последний патрон, затвор на задержке) | |
+| 3. Выстрел в прицеле | `aim_in` → `aim` (держать) → `shoot_aim` → `aim_out` | `aim` |
+| 4. Перезарядка | `reload`, `reload_empty`; у Remington `reload_start` → `reload` (на каждый патрон) → `reload_end` | |
+| 5. Холостой спуск (пусто) | `dry_fire`, `dry_fire_aim` | |
+| 6. Бег (оружие поджато) | `sprint` | да |
+| Ходьба | `walk` | да |
+| Прочее | `draw`, `holster`, `inspect`, `idle_empty`; `firemode` (MK18, AK), `pump` (870), `bolt` (AWM) | |
 
-Анимации можно открыть в Blockbench: откройте `.bbmodel` и выберите
-`Animation → Import Animations` → `<id>.animation.json`.
+- **Прицеливание:** смещение ствола в `aim` рассчитано из трансформа
+  `firstperson_righthand` так, что линия прицеливания (верх целика/планки)
+  встаёт в центр экрана. Если поменяете `display` в `models/item/<id>.json`,
+  пересоберите (`python3 tools/build.py <id>`).
+- **Руки в анимациях:** при перезарядке левая рука берёт магазин, уносит его и
+  приносит новый; у Remington левая рука двигает цевьё и досылает патроны в
+  окно; у AWM правая рука работает затвором.
+- Две кости-контроллера в примере: `state` (idle / walk / sprint / aim,
+  выбирается на клиенте) и `action` (все одноразовые анимации через
+  `triggerAnim`). Переходы между циклами сглаживаются (5 тиков).
 
 ## Что внутри
 
@@ -104,9 +104,11 @@ GeckoLib (ветка `26.2`). В игре модели и пример кода 
 ## Пересборка / новые стволы
 
 ```
-pip install pillow numpy
-python3 tools/build.py          # все стволы
-python3 tools/build.py ak47     # только один
+pip install pillow numpy opencv-python scipy
+python3 tools/build.py              # все стволы
+python3 tools/build.py ak47         # только один
+python3 tools/animpreview.py ak47   # GIF-превью анимаций
+python3 tools/silhouette.py <папка с фото>   # заново снять силуэты (нужны фото)
 ```
 
 Каждый ствол — файл `tools/<id>.py` с функцией `build()`, `GRIP_POINT`, `DISPLAY`

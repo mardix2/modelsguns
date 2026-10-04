@@ -11,9 +11,11 @@ import net.minecraft.world.item.Item;
 public class ModelsGuns implements ModInitializer {
     public static final String MOD_ID = "modelsguns";
 
-    /// one-shot animations available for every gun (see README for the extra ones)
-    public static final String[] ACTIONS = {"shoot", "shoot_last", "reload", "reload_empty", "inspect",
-            "draw", "holster"};
+    /// one-shot animations (see the README for which gun has which; a name a
+    /// gun does not have is simply never triggered for it)
+    public static final String[] ACTIONS = {"shoot", "shoot_aim", "shoot_last", "dry_fire", "dry_fire_aim",
+            "aim_in", "aim_out", "reload", "reload_empty", "reload_start", "reload_end", "pump", "bolt",
+            "inspect", "firemode", "draw", "holster"};
 
     public static final String[] GUNS = {"mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm"};
 

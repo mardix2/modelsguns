@@ -1,179 +1,175 @@
-"""Desert Eagle Mark XIX (.50 AE), brushed stainless with black controls.
+"""Desert Eagle Mark XIX (.50 AE): polished stainless, black serration
+panels, ambidextrous safety, G10 grips.
 
-Real proportions: 270 mm long, 150 mm tall, 32 mm wide, 152 mm barrel.
-Scale: 1 unit ~= 7 mm.  Muzzle points north (-Z), bore axis x=8, y=17.8.
+Outlines are measured on a side photo (3.64 px per mm, muzzle at x=21, bore
+at y=100); widths from real dimensions (slide 32 mm).  1 model unit = 7 mm.
 """
 
+import math
+
 import anims
-from bbgen import Material, Model
+from bbgen import Material, MM, Model
+from trace import Silhouette
 
 MATERIALS = {
-    "ss": Material((166, 169, 175), 3),          # brushed stainless
-    "ss_dark": Material((126, 129, 135), 3),
-    "ss_deep": Material((88, 90, 95), 3),
-    "black": Material((36, 36, 39), 3),
-    "rubber": Material((30, 30, 31), 4),
+    "ss": Material((196, 199, 205), 3),
+    "ss_dark": Material((140, 143, 150), 3),
+    "ss_deep": Material((92, 94, 100), 3),
+    "black": Material((30, 30, 33), 3),
+    "g10": Material((92, 90, 72), 5),
+    "g10_dark": Material((62, 60, 48), 4),
     "brass": Material((184, 148, 70), 5),
     "white": Material((236, 236, 228), 2, edge=False),
     "red": Material((184, 34, 30), 2, edge=False),
     "bore": Material((6, 6, 6), 1, edge=False),
 }
 
-BY = 17.8   # bore axis height
+U = 7.0
+S = Silhouette("deagle", 3.64, 21, 100)
+Z, Y, P = S.zmm, S.ymm, S.poly
+
+
+def circle(cx, cy, r, n=12):
+    return P([(cx + r * math.cos(2 * math.pi * i / n), cy + r * math.sin(2 * math.pi * i / n)) for i in range(n)])
 
 
 def build():
     m = Model("deagle", MATERIALS, density=8)
-    B = m.box
+    k = MM(m, U)
 
     # ======================================================================
-    # barrel: polygonal top with integral Picatinny rail, gas lug below
+    # fixed barrel: big flat-sided block, ventilated top rib, front sight
     # ======================================================================
     g = "barrel"
-    B("barrel_side", 6.0, 15.8, 0.0, 10.0, 19.85, 17.9, "ss", g, "brushed",
-      text={"west": "DESERT EAGLE .50 AE", "east": "MAGNUM .50 AE"})
-    B("barrel_top", 7.05, 19.85, 0.0, 8.95, 20.9, 17.9, "ss", g, "brushed")
-    m.edge("barrel_slope_l", "z", 0.0, 17.9, 6.0, 20.9, -1, 1, 1.05, "ss", g)
-    m.edge("barrel_slope_r", "z", 0.0, 17.9, 10.0, 20.9, 1, 1, 1.05, "ss", g)
-    m.edge("barrel_low_l", "z", 0.0, 17.9, 6.0, 15.8, -1, -1, 0.3, "ss", g)
-    m.edge("barrel_low_r", "z", 0.0, 17.9, 10.0, 15.8, 1, -1, 0.3, "ss", g)
-    B("barrel_groove_l", 5.98, 16.35, 0.6, 6.0, 16.5, 17.3, "ss_deep", g)
-    B("barrel_groove_r", 10.0, 16.35, 0.6, 10.02, 16.5, 17.3, "ss_deep", g)
-    # muzzle face: big bore with crown, chamfered front edges
-    m.cyl_z("muzzle_crown", 8.0, BY, -0.06, 0.02, 1.15, "ss_dark", g)
-    m.cyl_z("muzzle_bore", 8.0, BY, -0.1, -0.06, 0.82, "bore", g)
-    # integral rail
-    B("rail_base", 7.15, 20.9, 0.9, 8.85, 21.1, 17.2, "ss", g)
-    m.teeth_z("rail_t", "up", 7.15, 8.85, 21.1, 0.3, 1.1, 17.2, "ss", g, period=1.43, tooth=0.85)
-    # front sight on the rail front
-    m.bevel("front_sight", 7.68, 21.1, 0.25, 8.32, 22.45, 1.85, 0.08, "black", g, axis="y")
-    B("front_sight_dot", 7.92, 21.95, 1.85, 8.08, 22.11, 1.87, "white", g)
-    # gas lug under the barrel
-    m.bevel("gas_lug", 6.55, 14.55, 0.25, 9.45, 15.85, 15.5, 0.25, "ss", g, "brushed")
-    m.cyl_z("gas_port", 8.0, 15.2, 0.21, 0.25, 0.32, "bore", g)
+    barrel = P([(21, 60), (585, 60), (585, 187), (70, 187), (45, 181), (29, 166), (22, 142)])
+    k.prof("barrel", barrel, -15, 15, "ss", g, "brushed", step=14, bevel=3)
+    k.edge("barrel_top_l", "z", Z(22), Z(585), -15, Y(60), -1, 1, 6, "ss", g)
+    k.edge("barrel_top_r", "z", Z(22), Z(585), 15, Y(60), 1, 1, 6, "ss", g)
+    k.b("barrel_mark_l", -15.2, Y(160), Z(250), -15, Y(140), Z(470), "ss", g,
+        text={"west": "DESERT EAGLE PISTOL"})
+    k.b("barrel_mark_r", 15, Y(160), Z(40), 15.2, Y(140), Z(110), "ss", g, text={"east": "50AE"})
+    for side, x in (("l", -15.3), ("r", 15)):
+        k.b("barrel_groove_" + side, x, Y(186), Z(125), x + 0.3, Y(112), Z(127), "ss_deep", g)
+        k.b("barrel_flat_" + side, x, Y(122), Z(127), x + 0.3, Y(112), Z(300), "ss_deep", g)
+    k.cyl("muzzle_crown", 0, Z(20.6), Z(21.3), 9.5, "ss_dark", g)
+    k.cyl("muzzle_bore", 0, Z(20.4), Z(20.6), 6.4, "bore", g)
+    # ventilated rib: rail with windows
+    k.bv("rib", -5, Y(60), Z(23), 5, Y(52), Z(585), 0.8, "ss", g, "brushed")
+    for i, x in enumerate((135, 172, 210, 248, 288, 325, 362, 402, 440, 478, 516, 552)):
+        k.b("rib_slot_%02d" % i, -5.2, Y(59), Z(x - 8), 5.2, Y(54.5), Z(x + 8), "ss_deep", g)
+    k.prof("front_sight", P([(45, 53), (50, 32), (62, 25), (86, 34), (90, 53)]), -3, 3, "black", g,
+           step=8, bevel=0.8)
 
     # ======================================================================
-    # slide
+    # slide: black serration panel with slanted ridges, safety, rear sight
     # ======================================================================
     g = "slide"
-    B("slide_body", 5.72, 15.3, 17.9, 10.28, 19.5, 31.4, "ss", g, "brushed")
-    B("slide_top", 6.62, 19.5, 17.9, 9.38, 20.4, 38.3, "ss", g, "brushed")
-    m.edge("slide_chamfer_l", "z", 17.9, 38.3, 5.72, 20.4, -1, 1, 0.9, "ss", g)
-    m.edge("slide_chamfer_r", "z", 17.9, 38.3, 10.28, 20.4, 1, 1, 0.9, "ss", g)
-    m.edge("slide_front_top", "x", 6.62, 9.38, 20.4, 17.9, 1, -1, 0.35, "ss", g)
-    m.edge("slide_low_l", "z", 17.9, 38.3, 5.72, 15.3, -1, -1, 0.22, "ss", g)
-    m.edge("slide_low_r", "z", 17.9, 38.3, 10.28, 15.3, 1, -1, 0.22, "ss", g)
-    for side, (a, b) in (("l", (5.7, 5.72)), ("r", (10.28, 10.3))):
-        B("slide_groove_" + side, a, 16.05, 18.3, b, 16.2, 31.2, "ss_deep", g)
-        B("slide_groove_top_" + side, a, 19.05, 18.3, b, 19.15, 31.2, "ss_deep", g)
-    # rear serrations
-    B("slide_serr_core", 5.92, 15.3, 31.4, 10.08, 19.5, 38.3, "ss_dark", g)
-    z, i = 31.6, 0
-    while z + 0.3 <= 37.7:
-        B("slide_serr_%02d" % i, 5.72, 15.55, z, 10.28, 19.3, z + 0.3, "ss", g, "brushed")
-        z, i = z + 0.6, i + 1
-    B("slide_rear_band", 5.72, 15.3, 37.7, 10.28, 19.5, 38.3, "ss", g, "brushed")
-    m.bevel("slide_rear_plate", 6.2, 15.5, 38.3, 9.8, 20.0, 38.45, 0.25, "ss_dark", g)
-    # ejection port with the rotating bolt visible
-    B("ejection_port", 10.28, 18.3, 19.6, 10.3, 19.9, 24.2, "bore", g)
-    m.cyl_z("bolt_body", 9.65, 19.1, 19.8, 24.0, 0.66, "ss_dark", g)
-    for k in range(3):
-        B("bolt_lug_%d" % k, 10.1, 18.55 + k * 0.32, 19.8, 10.3, 18.75 + k * 0.32, 20.3, "ss_deep", g)
-    B("extractor", 10.28, 18.45, 24.2, 10.36, 18.9, 26.7, "ss_dark", g)
-    # ambidextrous slide safety levers (on "fire": lever down, red dot shown)
-    for side, (a, b, s_) in (("l", (5.38, 5.72, -1)), ("r", (10.28, 10.62, 1))):
-        m.pin_x("safety_hub_" + side, (a + b) / 2, 18.5, 36.6, 0.42, a, b, "black", g)
-        with m.frame(("x", 28, (8, 18.5, 36.6))):
-            m.bevel("safety_lever_" + side, a + 0.04, 17.95, 33.9, b - 0.04, 18.55, 36.6, 0.08, "black", g,
-                    "knurl", axis="x")
-        B("safety_red_" + side, a - 0.01 if s_ < 0 else b - 0.01, 19.1, 36.35,
-          a + 0.01 if s_ < 0 else b + 0.01, 19.35, 36.6, "red", g)
-    # rear sight with two white dots
-    m.bevel("rs_base", 6.95, 20.4, 35.8, 9.05, 20.85, 37.6, 0.12, "black", g)
-    m.bevel("rs_ear_l", 6.95, 20.85, 35.8, 7.75, 21.6, 37.6, 0.08, "black", g)
-    m.bevel("rs_ear_r", 8.25, 20.85, 35.8, 9.05, 21.6, 37.6, 0.08, "black", g)
-    B("rs_dot_l", 7.27, 21.05, 37.6, 7.43, 21.21, 37.62, "white", g)
-    B("rs_dot_r", 8.57, 21.05, 37.6, 8.73, 21.21, 37.62, "white", g)
+    slide = P([(585, 44), (800, 44), (845, 48), (868, 68), (888, 105), (900, 150), (905, 186), (585, 186)])
+    k.prof("slide", slide, -16, 16, "ss", g, "brushed", step=14, bevel=3)
+    k.edge("slide_top_l", "z", Z(585), Z(850), -16, Y(44), -1, 1, 5, "ss", g)
+    k.edge("slide_top_r", "z", Z(585), Z(850), 16, Y(44), 1, 1, 5, "ss", g)
+    panel = P([(602, 80), (730, 80), (760, 128), (880, 128), (885, 184), (632, 184)])
+    for side, (a, b) in (("l", (-16.4, -16)), ("r", (16, 16.4))):
+        k.prof("serr_panel_" + side, panel, a, b, "black", g, step=12, t=3, bevel=0.1)
+        for i in range(13):
+            x0 = 612 + i * 20
+            top = 82 if x0 < 735 else 130
+            with k.frame("x", 16, 0, Y(184), Z(x0 + 30)):
+                k.b("serr_ridge_%s_%02d" % (side, i), a - 0.25 if side == "l" else b - 0.15, Y(184),
+                    Z(x0 + 30) - 0.7, a + 0.15 if side == "l" else b + 0.25, Y(top + 3), Z(x0 + 30) + 0.7,
+                    "ss", g)
+    k.b("ejection_port", 16, Y(100), Z(600), 16.2, Y(60), Z(700), "bore", g)
+    k.cyl("bolt_face", Y(80), Z(612), Z(690), 6.2, "ss_dark", g, x=12)
+    k.prof("rear_sight", P([(800, 46), (804, 30), (840, 27), (846, 46)]), -8, 8, "black", g, step=8, bevel=1)
+    k.b("rear_notch", -2, Y(40), Z(803), 2, Y(26), Z(843), "bore", g)
+    k.b("rear_dot_l", -6, Y(38), Z(846), -4, Y(34), Z(846.6), "white", g)
+    k.b("rear_dot_r", 4, Y(38), Z(846), 6, Y(34), Z(846.6), "white", g)
+    # ambidextrous safety: hub and lever with red dot
+    for side, (a, b) in (("l", (-18.5, -16)), ("r", (16, 18.5))):
+        lever = P([(740, 72), (800, 66), (836, 76), (842, 104), (818, 124), (790, 116), (746, 94)])
+        k.prof("safety_" + side, lever, a, b, "black", g, step=8, t=3, bevel=0.6)
+        hub = circle(822, 93, 13, 10)
+        k.prof("safety_hub_" + side, hub, a - 0.6 if side == "l" else b - 0.2,
+               a + 0.2 if side == "l" else b + 0.6, "black", g, step=6, t=3, bevel=0.6)
+        k.b("safety_red_" + side, a - 0.1 if side == "l" else b, Y(124), Z(772), a if side == "l" else b + 0.1,
+            Y(116), Z(780), "red", g)
 
     # ======================================================================
-    # frame
+    # frame: dust cover, trigger guard, grip frame, beavertail
     # ======================================================================
     g = "frame"
-    m.bevel("dust_cover", 6.3, 13.15, 6.8, 9.7, 15.35, 17.95, 0.35, "ss", g, "brushed")
-    for k, x in enumerate((7.3, 8.7)):
-        m.cyl_z("guide_rod_%d" % k, x, 14.2, 6.74, 6.8, 0.3, "ss_deep", g)
-    m.bevel("frame_rail", 6.0, 13.15, 17.9, 10.0, 15.35, 38.0, 0.2, "ss", g, "brushed")
-    m.bevel("frame_tang", 6.6, 13.4, 37.9, 9.4, 14.9, 39.4, 0.3, "ss", g, "brushed")
-    # trigger guard (rounded, small hook in front)
-    m.bevel("tg_front", 7.45, 10.2, 13.6, 8.55, 13.3, 14.5, 0.14, "ss", g, axis="y")
-    m.bevel("tg_bottom", 7.45, 9.35, 14.3, 8.55, 10.1, 24.3, 0.14, "ss", g)
-    m.edge("tg_corner", "x", 7.47, 8.53, 9.35, 13.6, -1, -1, 0.95, "ss", g)
-    # barrel release (left, front), slide stop, magazine release, pins
-    m.pin_x("barrel_release", 6.1, 14.1, 15.6, 0.48, 5.85, 6.35, "black", g)
-    B("barrel_release_grip", 5.83, 13.95, 15.25, 5.85, 14.25, 15.95, "ss_deep", g)
-    m.bevel("slide_stop", 5.75, 14.85, 22.5, 6.0, 15.35, 28.0, 0.08, "black", g, axis="x")
-    m.bevel("slide_stop_pad", 5.6, 14.65, 26.6, 6.0, 15.45, 28.2, 0.1, "black", g, "knurl", axis="x")
-    m.pin_x("mag_release", 5.85, 12.6, 23.1, 0.42, 5.6, 6.05, "black", g)
-    for side, (a, b) in (("l", (5.94, 6.02)), ("r", (9.98, 10.06))):
-        m.pin_x("pin_a_" + side, (a + b) / 2, 14.1, 19.4, 0.14, a, b, "ss_dark", g)
-        m.pin_x("pin_b_" + side, (a + b) / 2, 14.3, 34.6, 0.14, a, b, "ss_dark", g)
-        m.pin_x("pin_c_" + side, (a + b) / 2, 13.6, 31.0, 0.14, a, b, "ss_dark", g)
+    frame = [P([(70, 186), (585, 186), (905, 186), (960, 192), (1003, 205), (1005, 214), (985, 220),
+                (940, 214), (897, 217), (875, 232), (864, 265), (868, 300), (891, 361), (922, 436),
+                (940, 500), (948, 566), (714, 566), (697, 442), (685, 386), (666, 361), (660, 341),
+                (640, 342), (510, 342), (495, 337), (487, 322), (485, 230), (470, 213), (440, 202),
+                (100, 200), (75, 196)]),
+             P([(507, 233), (660, 233), (660, 327), (515, 327), (507, 318)])]
+    k.prof("frame", frame, -14, 14, "ss", g, "brushed", step=14, bevel=3)
+    k.b("frame_line_l", -14.3, Y(201), Z(100), -14, Y(199), Z(480), "ss_deep", g)
+    k.b("frame_line_r", 14, Y(201), Z(100), 14.3, Y(199), Z(480), "ss_deep", g)
+    # barrel release (two discs, left), slide stop, magazine release, pins
+    for i, (cx, cy) in enumerate(((495, 201), (497, 231))):
+        k.prof("barrel_release_%d" % i, circle(cx, cy, 12, 10), -15.6, -14, "black", g, step=6, t=3,
+               bevel=0.5)
+    k.prof("slide_stop", P([(612, 202), (760, 202), (764, 214), (760, 221), (612, 221)]),
+           -15.6, -14, "black", g, step=10, t=3, bevel=0.5)
+    k.prof("slide_stop_pad", circle(624, 211, 13, 10), -16.6, -14, "black", g, "knurl", step=6, t=3,
+           bevel=0.6)
+    k.prof("mag_release", circle(653, 312, 12, 10), -15.4, -14, "black", g, step=6, t=3, bevel=0.6)
+    for side, (a, b) in (("l", (-14.6, -14)), ("r", (14, 14.6))):
+        k.pin("pin_a_" + side, (a + b) / 2, Y(207), Z(800), 1.6, a, b, "ss_dark", g)
+        k.pin("pin_b_" + side, (a + b) / 2, Y(207), Z(880), 1.6, a, b, "ss_dark", g)
+
+    g = "grip"
+    panel = P([(682, 238), (702, 207), (828, 210), (860, 290), (890, 360), (924, 455), (936, 560),
+               (720, 560), (702, 440), (690, 380)])
+    for side, (a, b) in (("l", (-17.5, -14.2)), ("r", (14.2, 17.5))):
+        k.prof("grip_" + side, panel, a, b, "g10", g, "stipple", step=12, bevel=1.4)
+        for i, x in enumerate((700, 712, 724)):
+            k.b("grip_groove_%s_%d" % (side, i), a - 0.1 if side == "l" else b - 0.2, Y(540), Z(x + 6),
+                a + 0.2 if side == "l" else b + 0.1, Y(250), Z(x + 8), "g10_dark", g)
+        k.pin("grip_screw_" + side, a if side == "l" else b, Y(392), Z(800), 3, a - 0.4 if side == "l" else b - 0.2,
+              a + 0.2 if side == "l" else b + 0.4, "ss_dark", g)
 
     g = "trigger"
-    m.bevel("trigger_top", 7.65, 12.2, 17.6, 8.35, 13.25, 18.3, 0.08, "black", g, axis="y")
-    with m.frame(("x", 18, (8, 12.25, 17.95))):
-        m.bevel("trigger_mid", 7.65, 11.1, 17.6, 8.35, 12.3, 18.3, 0.08, "black", g, axis="y")
-    with m.frame(("x", 42, (8, 11.15, 17.75))):
-        m.bevel("trigger_tip", 7.65, 10.55, 17.45, 8.35, 11.2, 18.1, 0.08, "black", g, axis="y")
+    trig = P([(600, 233), (626, 233), (645, 258), (651, 298), (642, 324), (632, 324), (630, 296),
+              (618, 263), (602, 246)])
+    k.prof("trigger", trig, -4, 4, "black", g, step=6, t=3, bevel=0.8)
 
     g = "hammer"
-    with m.frame(("x", -24, (8, 15.6, 38.6))):
-        m.bevel("hammer_body", 7.55, 15.0, 38.2, 8.45, 17.4, 39.0, 0.12, "black", g, axis="y")
-        m.bevel("hammer_spur", 7.5, 17.1, 38.4, 8.5, 17.75, 40.1, 0.1, "black", g, "knurl")
-        m.pin_x("hammer_pin", 8.0, 15.6, 38.6, 0.2, 7.45, 8.55, "ss_dark", g)
-
-    # ======================================================================
-    # grip (18 deg rake): metal frame, wrap-around checkered panels
-    # ======================================================================
-    g = "grip"
-    with m.frame(("x", -18, (8, 13.2, 26.6))):
-        m.bevel("grip_frame", 6.05, 0.75, 26.2, 9.95, 13.5, 33.8, 0.3, "ss", g, "brushed", axis="y")
-        m.bevel("grip_backstrap", 6.4, 1.0, 33.6, 9.6, 13.0, 34.15, 0.22, "ss", g, "serration", axis="y")
-        m.bevel("grip_beaver", 6.5, 12.6, 33.6, 9.5, 13.6, 35.6, 0.25, "ss", g)
-        m.bevel("grip_front_strap", 6.5, 1.2, 25.85, 9.5, 12.2, 26.3, 0.2, "ss_dark", g, "checker",
-                axis="y")
-        for side, (a, b) in (("l", (5.72, 6.06)), ("r", (9.94, 10.28))):
-            m.bevel("panel_" + side, a, 1.5, 26.6, b, 12.3, 33.3, 0.18, "rubber", g, "checker",
-                    axis="x")
-            m.pin_x("panel_screw_" + side, (a + b) / 2 + (-0.05 if side == "l" else 0.05), 6.9, 30.0,
-                    0.22, a - 0.06 if side == "l" else b - 0.02, a + 0.02 if side == "l" else b + 0.06,
-                    "ss_dark", g)
-            B("panel_logo_" + side, a - 0.01 if side == "l" else b - 0.01, 10.3, 28.5,
-              a + 0.01 if side == "l" else b + 0.01, 11.3, 31.4, "rubber", g)
+    ham = P([(885, 82), (900, 76), (928, 78), (946, 90), (942, 108), (928, 128), (906, 134), (890, 120)])
+    k.prof("hammer", ham, -5, 5, "black", g, "knurl", step=8, t=4, bevel=1)
+    for i in range(5):
+        x = 902 + i * 8
+        k.b("hammer_tooth_%d" % i, -5, Y(78), Z(x), 5, Y(73), Z(x + 4), "black", g)
 
     g = "magazine"
-    with m.frame(("x", -18, (8, 13.2, 26.6))):
-        B("mag_body", 6.5, 0.75, 26.6, 9.5, 12.1, 33.0, "ss_deep", g)
-        B("mag_round", 7.2, 12.1, 27.0, 8.8, 12.7, 32.4, "brass", g)
-        m.cyl_z("mag_round_tip", 8.0, 12.4, 26.4, 27.0, 0.3, "brass", g)
-        m.bevel("mag_base", 6.0, 0.05, 25.9, 10.0, 0.75, 34.0, 0.2, "ss", g, "brushed", axis="y")
-        B("mag_base_lip", 6.6, 0.15, 25.55, 9.4, 0.65, 25.9, "ss", g)
+    k.bv("mag_body", -11, Y(560), Z(760), 11, Y(230), Z(880), 1.5, "ss_deep", g)
+    k.b("mag_round", -6.5, Y(240), Z(770), 6.5, Y(222), Z(870), "brass", g)
+    base = P([(712, 566), (952, 566), (956, 580), (716, 582)])
+    k.prof("mag_base", base, -16, 16, "ss", g, "brushed", step=12, bevel=2)
 
-    m.regroup({}, pivots={"trigger": (8, 13.2, 17.95), "hammer": (8, 15.6, 38.6),
-                          "magazine": (8, 13.0, 26.6), "slide": (8, 18.0, 28.0)})
+    m.regroup({}, pivots={"trigger": k.P(0, Y(240), Z(613)), "hammer": k.P(0, Y(125), Z(900)),
+                          "magazine": k.P(0, Y(400), Z(820)), "slide": k.P(0, Y(100), Z(745))})
     m.dynamic = {"slide", "trigger", "hammer", "magazine"}
     return m
 
 
-GRIP_POINT = (8.0, 7.5, 28.2)
+GRIP_POINT = MM(None, U).P(0, Y(400), Z(810))
 
-DISPLAY = {"hand": 0.24, "fp": 0.27, "gui": 0.38, "tilt": 0, "push": 0.0}
 
-_D = (0.951, 0.309)   # 18 deg grip axis
+ARMS = {
+    "grip": ((Z(777), Y(240)), (Z(831), Y(520))), "grip_w": 17.5, "grip_d": 25,
+    "trigger": (Z(640), Y(300)),
+    "left": {"kind": "support"}, "right_dir": (14, 8), "left_dir": (16, -20),
+}
+
+DISPLAY = {"hand": 0.24, "fp": 0.27, "gui": 0.4, "tilt": 0, "push": 0.0}
+
 ANIM = {
-    "action": "slide", "travel": 5.6, "locks_back": True, "hammer": 35,
+    "action": "slide", "travel": 40 / U, "locks_back": True, "hammer": 35,
     "trigger": True, "trigger_angle": 16,
-    "mag_dir": [0, -0.951, 0.309], "mag_far": 24, "mag_gap": 0.45,
+    "mag_dir": [0, -0.956, 0.292], "mag_far": 24, "mag_gap": 0.45,
     "recoil": 2.8, "recoil_time": 0.34, "shot_time": 0.36, "cycle_back": 0.045, "cycle_fwd": 0.1,
     "reload_time": 1.8, "reload_empty_time": 2.2,
     "reload_tilt": [12, 18, -30], "reload_lift": [-1.5, 1.5, -1.5],

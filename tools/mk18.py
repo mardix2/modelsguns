@@ -358,6 +358,20 @@ def build():
 # point (model units) that should sit in the player's hand
 GRIP_POINT = (8.0, 5.5, 14.4)
 
+
+U = 15.6     # mm per model unit (for the arms)
+
+
+def _mm(z, y):
+    return (z * U, (y - 10) * U)
+
+
+ARMS = {
+    "grip": (_mm(14.05, 7.3), _mm(15.54, 3.7)), "grip_w": 15, "grip_d": 19,
+    "trigger": _mm(11.35, 7.2),
+    "left": {"kind": "forend", "z": -4 * U, "y_top": 1.4 * U, "y_bot": -1.6 * U, "w": 1.45 * U},
+}
+
 DISPLAY = {"hand": 0.4, "fp": 0.42, "gui": 0.34, "tilt": 30, "push": -2.0}
 
 ANIM = {
