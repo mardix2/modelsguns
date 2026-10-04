@@ -50,6 +50,9 @@ def build():
     k.b("fs_hood_hole", -8.2, Y(48), Z(55), 8.2, Y(35), Z(65), "bore", g)
     k.cyl("fs_post", Y(40), Z(58), Z(62), 1.0, "steel_dark", g)
     k.cyl("cocking_tube", TY, Z(62), Z(205), 9.5, "steel", g)
+    # sheet-metal web joining the cocking tube to the barrel under it (no gap
+    # between the tube and the handguard)
+    k.bv("tube_web", -8, Y(82), Z(64), 8, TY, Z(205), 1.5, "steel", g)
     k.cyl("cocking_tube_cap", TY, Z(58), Z(62), 8, "steel_dark", g)
     k.pin("fs_pin", 0, Y(70), Z(60), 2.2, -8.6, 8.6, "steel_light", g)
 
@@ -68,7 +71,7 @@ def build():
            step=8, bevel=1.5)
     k.cylx("rear_drum", -9, 9, Y(42), Z(336), 8, "steel_dark", g, "knurl")
     for side, x in (("l", -15.3), ("r", 15)):
-        k.b("rcv_slot_" + side, x, Y(85), Z(228), x + 0.3, Y(77), Z(345), "steel_dark", g)
+        k.b("rcv_slot_" + side, x, Y(82), Z(228), x + 0.3, Y(80), Z(345), "steel_dark", g)
         k.b("rcv_rib_" + side, x, Y(66), Z(203), x + 0.3, Y(64), Z(355), "steel_dark", g)
         k.pin("rcv_pin_a_" + side, x + 0.15, Y(100), Z(212), 2.2, x - 0.3 if side == "l" else x,
               x + 0.3 if side == "l" else x + 0.6, "steel_light", g)

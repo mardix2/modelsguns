@@ -28,7 +28,9 @@ MATERIALS = {
 U = 16.0
 S = Silhouette("m870", 2.1, -24, 98)
 Z, Y, P = S.zmm, S.ymm, S.poly
-MY = Y(161)   # magazine tube axis
+MY = Y(161)
+EXT = 200.0   # the photo cuts the muzzle off: barrel lengthened to a 26" field barrel (mm)
+   # magazine tube axis
 
 
 def build():
@@ -39,14 +41,14 @@ def build():
     # barrel with ventilated rib and bead, barrel band
     # ======================================================================
     g = "barrel"
-    k.cyl("barrel", 0, Z(-24), Z(845), 9.3, "steel", g)
-    k.cyl("muzzle_bore", 0, Z(-24.6), Z(-24), 7.6, "bore", g)
-    k.bv("rib", -4, Y(73), Z(-22), 4, Y(67), Z(838), 0.6, "steel", g, "serration")
-    x, i = -10, 0
+    k.cyl("barrel", 0, Z(-24) - EXT, Z(845), 9.3, "steel", g)
+    k.cyl("muzzle_bore", 0, Z(-24.6) - EXT, Z(-24) - EXT, 7.6, "bore", g)
+    k.bv("rib", -4, Y(73), Z(-22) - EXT, 4, Y(67), Z(838), 0.6, "steel", g, "serration")
+    x, i = -10 - EXT * 2.1, 0
     while x < 820:
         k.b("rib_post_%02d" % i, -2.4, Y(80), Z(x), 2.4, Y(72), Z(x + 22), "steel", g)
         x, i = x + 92, i + 1
-    k.cyl("bead", Y(64), Z(-20), Z(-14), 1.6, "white", g)
+    k.cyl("bead", Y(64), Z(-20) - EXT, Z(-14) - EXT, 1.6, "white", g)
     band = P([(238, 108), (281, 108), (281, 140), (238, 140)])
     k.prof("barrel_band", band, -9, 9, "steel", g, step=8, bevel=2)
     k.pin("band_screw", 9.5, Y(126), Z(259), 2.6, 9, 10.5, "steel_light", g)
@@ -141,7 +143,7 @@ ARMS = {
     "right_dir": (58, 12), "grip_at": 0.95,
 }
 
-DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.22, "tilt": 30, "push": -3.5}
+DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.19, "tilt": 30}
 
 PUMP = 95 / U
 
