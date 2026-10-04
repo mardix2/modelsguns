@@ -1,0 +1,144 @@
+{
+ "textures": {
+  "particle": "modelsguns:item/m9a4"
+ },
+ "gui_light": "front",
+ "display": {
+  "thirdperson_righthand": {
+   "rotation": [
+    90.0,
+    0.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    3.36,
+    -0.33
+   ],
+   "scale": [
+    0.27,
+    0.27,
+    0.27
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    90.0,
+    0.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    3.36,
+    -0.33
+   ],
+   "scale": [
+    0.27,
+    0.27,
+    0.27
+   ]
+  },
+  "firstperson_righthand": {
+   "rotation": [
+    0.0,
+    8.0,
+    0.0
+   ],
+   "translation": [
+    -5.78,
+    5.18,
+    2.41
+   ],
+   "scale": [
+    0.35,
+    0.35,
+    0.35
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    0.0,
+    8.0,
+    0.0
+   ],
+   "translation": [
+    -5.78,
+    5.18,
+    2.41
+   ],
+   "scale": [
+    0.35,
+    0.35,
+    0.35
+   ]
+  },
+  "gui": {
+   "rotation": [
+    0.0,
+    -90.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    0.03,
+    0.0
+   ],
+   "scale": [
+    0.48,
+    0.48,
+    0.48
+   ]
+  },
+  "ground": {
+   "rotation": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    2.01,
+    0.0
+   ],
+   "scale": [
+    0.203,
+    0.203,
+    0.203
+   ]
+  },
+  "fixed": {
+   "rotation": [
+    0.0,
+    90.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    0.04,
+    0.0
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  },
+  "head": {
+   "rotation": [
+    0.0,
+    -90.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    10.04,
+    0.0
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  }
+ }
+}

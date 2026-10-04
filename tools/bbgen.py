@@ -114,6 +114,7 @@ class Model:
         self.cubes = []
         self.groups = []  # ordered group names (become GeckoLib bones)
         self.pivots = {}  # group -> pivot (animation centre)
+        self.parents = {}     # bone -> parent bone (default: root)
         self.dynamic = set()  # animated groups: never cull faces across them
         self.frames = []      # stack of (matrix, origin) applied to new cubes
         self.root_pivot = [8, 8, 8]  # pivot of the "root" bone (the grip)
@@ -663,7 +664,7 @@ class Model:
                 cube["uv"] = getattr(c, "geo_uv", None) or uv
                 cubes.append(cube)
             p = self.group_pivot(g)
-            bones.append({"name": g, "parent": "root", "pivot": rnd([8 - p[0], p[1], p[2] - 8]),
+            bones.append({"name": g, "parent": self.parents.get(g, "root"), "pivot": rnd([8 - p[0], p[1], p[2] - 8]),
                           "cubes": cubes})
         width = max(hi[0] - lo[0], hi[2] - lo[2]) / 16 + 1
         return {

@@ -221,7 +221,16 @@ def full_animations(mod, m, display, palms, gun_cubes, shift=(0, 0, 0)):
                 for win in bone_windows(spec, bone):
                     segs.append((win, bone, point, delta, ride))
             if segs or any(r for r in rs):
-                arm_track(spec, arm, segs, m.group_pivot, rest=rest)
+                arm_track(spec, arm, segs, lambda b: bone_chain(m, b), rest=rest,
+                          job_rot=c.get("arm_job_rot", {}).get(arm))
+    return out
+
+
+def bone_chain(m, bone):
+    out = []
+    while bone and bone != "root":
+        out.append((bone, m.group_pivot(bone)))
+        bone = m.parents.get(bone)
     return out
 
 
@@ -242,18 +251,22 @@ def bone_windows(spec, bone, merge=0.16):
     return [tuple(w) for w in out]
 
 
-def point_offset(spec, bone, pivot, point, t):
-    """How far `point` of `bone` has moved at time t (model px)."""
+def point_offset(spec, chain, point, t):
+    """How far `point` has moved at time t (model px); chain = [(bone, pivot)]
+    from the bone up through its parents."""
     import animpreview
-    chans = spec["bones"].get(bone, {})
-    pos = animpreview.sample(chans["position"], t) if "position" in chans else [0, 0, 0]
-    rot = animpreview.sample(chans["rotation"], t) if "rotation" in chans else [0, 0, 0]
-    r = bbgen.euler_matrix(rot)
-    q = bbgen.mat_vec(r, [point[i] - pivot[i] for i in range(3)])
-    return [q[i] + pivot[i] + pos[i] - point[i] for i in range(3)]
+    p = list(point)
+    for bone, pivot in chain:
+        chans = spec["bones"].get(bone, {})
+        pos = animpreview.sample(chans["position"], t) if "position" in chans else [0, 0, 0]
+        rot = animpreview.sample(chans["rotation"], t) if "rotation" in chans else [0, 0, 0]
+        q = bbgen.mat_vec(bbgen.euler_matrix(rot), [p[i] - pivot[i] for i in range(3)])
+        p = [q[i] + pivot[i] + pos[i] for i in range(3)]
+    return [p[i] - point[i] for i in range(3)]
 
 
-def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20, rest=([0, 0, 0], [0, 0, 0])):
+def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20, rest=([0, 0, 0], [0, 0, 0]),
+              job_rot=None):
     """Position keys for an arm doing the jobs in `segs` one after another:
     reach the part, move with it (sampled), go back to its resting place
     (rest[0] at the start, rest[1] from the first job on / at the end)."""
@@ -262,7 +275,7 @@ def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20, rest=([0
     L = spec["length"]
     segs = sorted(segs, key=lambda s: s[0][0])
     for i, ((t0, t1), bone, point, delta, ride) in enumerate(segs):
-        pv = pivot_of(bone)
+        chain = pivot_of(bone)
         start = max(keys[-1][0], t0 - (0 if ride and keys[-1][1] == [0, 0, 0] else reach))
         if start > keys[-1][0] + 0.02 and keys[-1][1] in (r0, r1):
             keys.append((start, keys[-1][1], None))
@@ -271,7 +284,7 @@ def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20, rest=([0
             t = t0 + (t1 - t0) * j / n
             if t <= keys[-1][0] + 1e-4:
                 continue
-            off = point_offset(spec, bone, pv, point, t)
+            off = point_offset(spec, chain, point, t)
             keys.append((t, [delta[q] + off[q] for q in range(3)], "easeInOutSine" if j == 0 else None))
         nxt = segs[i + 1][0][0] - reach if i + 1 < len(segs) else L + 1
         end = min(L, t1 + (0 if ride else back))
@@ -281,6 +294,17 @@ def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20, rest=([0
         keys.append((L * 0.8, r1, "easeInOutSine"))
     elif keys[-1][0] < L - 1e-4 and keys[-1][1] != r1:
         keys.append((L, r1, "easeInOutSine"))
+    if job_rot:
+        # the arm turns (about its hand end) while it works away from rest
+        rot = spec["bones"].setdefault(arm, {}).setdefault("rotation", {})
+        rot.clear()
+        rot[0.0] = [0, 0, 0]
+        away = False
+        for t, v, e in keys:
+            out = any(abs(x) > 1e-6 for x in v)
+            if out != away:
+                rot[round(t, 4)] = (list(job_rot) if out else [0, 0, 0], "easeInOutSine")
+                away = out
     ch = spec["bones"].setdefault(arm, {}).setdefault("position", {})
     ch.clear()
     for t, v, e in keys:
@@ -288,7 +312,7 @@ def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20, rest=([0
         ch[t] = ([round(x, 4) for x in v], e) if e else [round(x, 4) for x in v]
 
 
-GUN_MODULES = ["mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm"]
+GUN_MODULES = ["mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm", "m1911", "m9a4", "p320", "mk23", "rhino"]
 
 
 def prepare(mod):

@@ -105,7 +105,11 @@ def _recoil(a, c, t0=0.0):
 
 
 def _trigger(a, c, t0=0.0, hold=0.04):
-    if "trigger" in c:
+    if c.get("trigger_slide"):          # 1911-style trigger slides straight back
+        d = [0, 0, c["trigger_slide"]]
+        a.track("trigger", "position", [(t0, ZERO), (t0 + 0.02, d, "easeOutQuad"), (t0 + 0.02 + hold, d),
+                                        (t0 + 0.08 + hold, ZERO, "easeInOutSine")])
+    elif "trigger" in c:
         a.track("trigger", "rotation", [(t0, ZERO), (t0 + 0.02, [-c.get("trigger_angle", 14), 0, 0], "easeOutQuad"),
                                         (t0 + 0.02 + hold, [-c.get("trigger_angle", 14), 0, 0]),
                                         (t0 + 0.08 + hold, ZERO, "easeInOutSine")])

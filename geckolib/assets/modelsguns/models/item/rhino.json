@@ -1,0 +1,144 @@
+{
+ "textures": {
+  "particle": "modelsguns:item/rhino"
+ },
+ "gui_light": "front",
+ "display": {
+  "thirdperson_righthand": {
+   "rotation": [
+    90.0,
+    0.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    5.31,
+    -0.4
+   ],
+   "scale": [
+    0.25,
+    0.25,
+    0.25
+   ]
+  },
+  "thirdperson_lefthand": {
+   "rotation": [
+    90.0,
+    0.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    5.31,
+    -0.4
+   ],
+   "scale": [
+    0.25,
+    0.25,
+    0.25
+   ]
+  },
+  "firstperson_righthand": {
+   "rotation": [
+    0.0,
+    8.0,
+    0.0
+   ],
+   "translation": [
+    -6.1,
+    5.06,
+    0.12
+   ],
+   "scale": [
+    0.31,
+    0.31,
+    0.31
+   ]
+  },
+  "firstperson_lefthand": {
+   "rotation": [
+    0.0,
+    8.0,
+    0.0
+   ],
+   "translation": [
+    -6.1,
+    5.06,
+    0.12
+   ],
+   "scale": [
+    0.31,
+    0.31,
+    0.31
+   ]
+  },
+  "gui": {
+   "rotation": [
+    0.0,
+    -90.0,
+    0.0
+   ],
+   "translation": [
+    -0.03,
+    0.02,
+    0.0
+   ],
+   "scale": [
+    0.4,
+    0.4,
+    0.4
+   ]
+  },
+  "ground": {
+   "rotation": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "translation": [
+    0.0,
+    2.01,
+    0.02
+   ],
+   "scale": [
+    0.188,
+    0.188,
+    0.188
+   ]
+  },
+  "fixed": {
+   "rotation": [
+    0.0,
+    90.0,
+    0.0
+   ],
+   "translation": [
+    0.04,
+    0.02,
+    0.0
+   ],
+   "scale": [
+    0.5,
+    0.5,
+    0.5
+   ]
+  },
+  "head": {
+   "rotation": [
+    0.0,
+    -90.0,
+    0.0
+   ],
+   "translation": [
+    -0.05,
+    10.03,
+    0.0
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  }
+ }
+}

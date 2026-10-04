@@ -15,11 +15,17 @@
 | H&K MP5 (A2, как на фото) | `mp5a5` | cocking_handle, trigger, selector, magazine |
 | Remington 870 Express | `m870` | pump, trigger, shell |
 | AI AWM .338 | `awm` | bolt, trigger, magazine |
+| Colt M1911A1 | `m1911` | slide, barrel, hammer, trigger (ход назад), magazine, slide_stop |
+| Beretta M9A4 | `m9a4` | slide, barrel, hammer, trigger, magazine, slide_stop |
+| SIG Sauer P320 (M17) | `p320` | slide, barrel, trigger, magazine, slide_stop |
+| HK Mk23 | `mk23` | slide, barrel, hammer, trigger, magazine, slide_stop |
+| Chiappa Rhino 60DS | `rhino` | crane → cylinder → rounds (вложенные кости), hammer, trigger |
 
 У всех ещё есть кости рук `right_arm` и `left_arm` (см. ниже).
 
 Только само оружие: без прицелов, фонарей и прочего обвеса (у MK18 и AWM — только
-планки). Все семь стволов построены по референсным фото: контур каждой детали
+планки). Пистолеты M1911A1, M9A4, P320, Mk23 и Rhino построены по заводским
+размерам (фото к ним не было). Все семь стволов построены по референсным фото: контур каждой детали
 снят с фото в миллиметрах (силуэты — в `tools/silhouettes/`, сами фото в
 репозиторий не входят), толщины — по реальным размерам. У фото MK18 сильная
 перспектива, масштаб по длине скорректирован (`tools/mk18.py`, `scale()`); Glock
@@ -57,6 +63,11 @@ Gen5 (насечки, скос носа затвора, расширенная �
 | 6. Бег (оружие поджато) | `sprint` | да |
 | Ходьба | `walk` | да |
 | Прочее | `draw`, `holster`, `inspect`, `idle_empty`; `firemode` (MK18, AK), `pump` (870), `bolt` (AWM) | |
+
+У револьвера Rhino выстрел поворачивает барабан на одну каморку (60°) и взводит
+и спускает курок; `reload` (он же `reload_empty`) — нажатие защёлки, барабан
+откидывается влево, гильзы выбиваются, шесть патронов вставляются, барабан
+закрывается; левая рука держит барабан и вставляет патроны.
 
 - **Положение от первого лица** задано в `models/item/<id>.json`
   (`firstperson_righthand`): рукоять в правой нижней части экрана, ствол слегка

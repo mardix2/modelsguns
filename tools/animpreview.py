@@ -47,7 +47,11 @@ def posed_model(model, pose):
     pm.cubes = []
     for c in model.cubes:
         c2 = copy.copy(c)
-        for bone, pivot in ((c.group, model.group_pivot(c.group)), ("root", model.root_pivot)):
+        chain, b = [], c.group
+        while b and b != "root":
+            chain.append((b, model.group_pivot(b)))
+            b = getattr(model, "parents", {}).get(b)
+        for bone, pivot in chain + [("root", model.root_pivot)]:
             if bone not in pose:
                 continue
             pos, rot = pose[bone]

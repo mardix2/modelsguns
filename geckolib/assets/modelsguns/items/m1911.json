@@ -1,0 +1,9 @@
+{
+ "model": {
+  "type": "minecraft:special",
+  "base": "modelsguns:item/m1911",
+  "model": {
+   "type": "geckolib:geckolib"
+  }
+ }
+}

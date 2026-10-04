@@ -17,7 +17,8 @@ public class ModelsGuns implements ModInitializer {
             "aim_in", "aim_out", "reload", "reload_empty", "reload_start", "reload_end", "pump", "bolt",
             "inspect", "firemode", "draw", "holster"};
 
-    public static final String[] GUNS = {"mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm"};
+    public static final String[] GUNS = {"mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm",
+            "m1911", "m9a4", "p320", "mk23", "rhino"};
 
     @Override
     public void onInitialize() {
