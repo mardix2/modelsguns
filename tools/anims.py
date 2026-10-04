@@ -84,8 +84,8 @@ def holster(c):
 
 def sprint(c):
     a = Anim(0.8, loop=True)
-    base_r = c.get("sprint_rot", [-24, 14, 22])
-    base_p = c.get("sprint_pos", [-1.0, -3.0, 1.0])
+    base_r = c.get("sprint_rot", [-14, 30, 30])
+    base_p = c.get("sprint_pos", [-1.0, -4.5, 1.0])
     a.track("root", "rotation", [(0, base_r), (0.2, add(base_r, [2, 1.5, -2]), "easeInOutSine"),
                                  (0.4, base_r, "easeInOutSine"), (0.6, add(base_r, [2, -1.5, 2]), "easeInOutSine"),
                                  (0.8, base_r, "easeInOutSine")])
@@ -369,33 +369,37 @@ def _ads(c):
     return c.get("ads", {}).get("pos", ZERO)
 
 
+def _ads_rot(c):
+    return c.get("ads", {}).get("rot", ZERO)
+
+
 def aim_in(c):
     a = Anim(c.get("aim_time", 0.25))
-    p = _ads(c)
+    p, r = _ads(c), _ads_rot(c)
     a.track("root", "position", [(0, ZERO), (a.length, p, "easeOutCubic")])
-    a.track("root", "rotation", [(0, ZERO), (a.length * 0.5, [0.6, 0, -2.0], "easeOutQuad"),
-                                 (a.length, ZERO, "easeInOutSine")])
+    a.track("root", "rotation", [(0, ZERO), (a.length * 0.5, add(scale(r, 0.6), [0.6, 0, -2.0]), "easeOutQuad"),
+                                 (a.length, r, "easeInOutSine")])
     return a
 
 
 def aim(c):
     """Held while aiming: the gun stays on the sight line, gently breathing."""
     a = Anim(4.0, loop=True)
-    p = _ads(c)
+    p, r = _ads(c), _ads_rot(c)
     a.track("root", "position", [(0, p), (1.0, add(p, [0, 0.04, 0]), "easeInOutSine"),
                                  (2.0, add(p, [0.02, 0, 0]), "easeInOutSine"),
                                  (3.0, add(p, [0, 0.03, 0]), "easeInOutSine"), (4.0, p, "easeInOutSine")])
-    a.track("root", "rotation", [(0, ZERO), (1.0, [0.12, 0.08, 0], "easeInOutSine"),
-                                 (2.0, [0.04, -0.06, 0], "easeInOutSine"),
-                                 (3.0, [-0.1, 0.04, 0], "easeInOutSine"), (4.0, ZERO, "easeInOutSine")])
+    a.track("root", "rotation", [(0, r), (1.0, add(r, [0.12, 0.08, 0]), "easeInOutSine"),
+                                 (2.0, add(r, [0.04, -0.06, 0]), "easeInOutSine"),
+                                 (3.0, add(r, [-0.1, 0.04, 0]), "easeInOutSine"), (4.0, r, "easeInOutSine")])
     return a
 
 
 def aim_out(c):
     a = Anim(c.get("aim_time", 0.25) * 0.8)
-    p = _ads(c)
+    p, r = _ads(c), _ads_rot(c)
     a.track("root", "position", [(0, p), (a.length, ZERO, "easeInOutSine")])
-    a.track("root", "rotation", [(0, ZERO), (a.length, ZERO)])
+    a.track("root", "rotation", [(0, r), (a.length, ZERO, "easeInOutSine")])
     return a
 
 
@@ -410,8 +414,9 @@ def shoot_aim(c):
     a.bones["root"]["rotation"] = {}
     a.track("root", "position", [(0, p), (0.03, add(p, [0, 0.1 * kick, 1.3 * kick]), "easeOutQuad"),
                                  (t, p, "easeInOutSine")])
-    a.track("root", "rotation", [(0, ZERO), (0.035, [2.2 * kick, 0.15 * kick, -0.2 * kick], "easeOutQuad"),
-                                 (t, ZERO, "easeInOutSine")])
+    r = _ads_rot(c)
+    a.track("root", "rotation", [(0, r), (0.035, add(r, [2.2 * kick, 0.15 * kick, -0.2 * kick]), "easeOutQuad"),
+                                 (t, r, "easeInOutSine")])
     return a
 
 
@@ -420,8 +425,9 @@ def dry_fire(c, aimed=False):
     a = Anim(0.3)
     _trigger(a, c, 0.0, hold=0.08)
     p = _ads(c) if aimed else ZERO
+    r = _ads_rot(c) if aimed else ZERO
     a.track("root", "position", [(0, p), (0.04, add(p, [0, 0, 0.12]), "easeOutQuad"), (0.3, p, "easeInOutSine")])
-    a.track("root", "rotation", [(0, ZERO), (0.04, [0.3, 0, 0], "easeOutQuad"), (0.3, ZERO, "easeInOutSine")])
+    a.track("root", "rotation", [(0, r), (0.04, add(r, [0.3, 0, 0]), "easeOutQuad"), (0.3, r, "easeInOutSine")])
     if c.get("action") and c.get("locks_back"):
         a.pos(c["action"], 0, [0, 0, c["travel"]])     # the slide stays locked back
         a.pos(c["action"], 0.3, [0, 0, c["travel"]])

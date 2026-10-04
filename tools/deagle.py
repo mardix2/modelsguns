@@ -164,7 +164,7 @@ ARMS = {
     "left": {"kind": "support"}, "right_dir": (14, 8), "left_dir": (16, -20),
 }
 
-DISPLAY = {"hand": 0.24, "fp": 0.27, "gui": 0.4, "tilt": 0, "push": 0.0}
+DISPLAY = {"hand": 0.24, "fp": 0.31, "gui": 0.4, "tilt": 0}
 
 ANIM = {
     "action": "slide", "travel": 40 / U, "locks_back": True, "hammer": 35,

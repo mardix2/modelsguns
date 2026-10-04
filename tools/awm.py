@@ -161,6 +161,8 @@ ARMS = {
 DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.22, "tilt": 30, "push": -4.0}
 
 ANIM = {
+    "hands": {"left_arm": [("magazine", None, None)], "right_arm": [("bolt", "bolt_knob", None)]},
+    "aim_above_mm": 42,
     "trigger": True, "trigger_angle": 10,
     "mag_dir": [0, -1, 0], "mag_far": 14, "mag_gap": 0.45, "press_check": False,
     "recoil": 3.4, "recoil_time": 0.45, "shot_time": 0.5,

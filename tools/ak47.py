@@ -180,6 +180,7 @@ ARMS = {
 DISPLAY = {"hand": 0.34, "fp": 0.36, "gui": 0.27, "tilt": 30, "push": -2.5}
 
 ANIM = {
+    "hands": {"left_arm": [("magazine", None, None), ("bolt", "charging_knob", ("reload_empty", "inspect"))]},
     "action": "bolt", "travel": 120 / U, "locks_back": False,
     "trigger": True, "trigger_angle": 12,
     "selector": ("selector", [14, 0, 0]),

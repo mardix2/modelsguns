@@ -138,6 +138,7 @@ ARMS = {
     "grip": ((Z(1322), Y(175)), (Z(1395), Y(280))), "grip_w": 21, "grip_d": 19,
     "trigger": (Z(1197), Y(215)),
     "left": {"kind": "forend", "z": Z(520), "y_top": Y(101), "y_bot": Y(213), "w": 24},
+    "right_dir": (58, 12), "grip_at": 0.95,
 }
 
 DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.22, "tilt": 30, "push": -3.5}
@@ -145,6 +146,8 @@ DISPLAY = {"hand": 0.3, "fp": 0.32, "gui": 0.22, "tilt": 30, "push": -3.5}
 PUMP = 95 / U
 
 ANIM = {
+    "hands": {"left_arm": [("pump", None, None), ("shell", "shell_hull", None)]},
+    "aim_above_mm": 24,
     "trigger": True, "trigger_angle": 12, "mag": None,
     "recoil": 3.0, "recoil_time": 0.4, "shot_time": 0.45,
 }

@@ -1,166 +1,159 @@
-"""First-person arms: gloved hands and sleeves holding the gun.
+"""First-person Minecraft arms holding the gun.
 
-Built in real millimetres (so every gun gets same-size hands) into two bones,
-`right_arm` and `left_arm`, children of `root`.  The mod hides both bones
-outside first person (see geckolib/example GunRenderer).
+Each arm is the player's arm: a 4 x 12 x 4 texel box (plus the 0.25 texel
+sleeve overlay) mapped exactly like the arms of a 64 x 64 player skin, so
+the mod can draw the bones `right_arm` / `left_arm` with the player's own
+skin (see geckolib/example GunRenderer).  The gun's texture atlas keeps its
+top-left 64 x 64 corner in skin layout with Steve-like arms as a default.
 
-Spec per gun (all in the gun's mm space: z back, y up, x right):
+Arms keep the same on-screen size on every gun: one skin texel is 0.045
+block in first-person view space (vanilla arms: 0.0625), so in model units
+it is 0.72 / (first-person display scale).
+
+Spec per gun (gun mm space: z back, y up, x right):
 
     ARMS = {
         "grip": ((z_top, y_top), (z_bottom, y_bottom)),   # pistol grip centre line
-        "grip_w": 15, "grip_d": 16,    # half width, half depth of the grip
-        "trigger": (z, y),             # where the index finger rests
+        "trigger": (z, y),
         "left": {"kind": "forend", "z": .., "y_top": .., "y_bot": .., "w": ..}
-              or {"kind": "support"}   # pistols: left hand wraps the right
-        "right_dir": (pitch, yaw), "left_dir": (pitch, yaw),   # optional
+              or {"kind": "support"},                     # pistols
+        "right_dir": (pitch, yaw), "left_dir": (pitch, yaw),   # optional, degrees
     }
 """
 
 import math
+import random
 
 from bbgen import Material
 
-MATS = {
-    "glove": Material((44, 45, 47), 4),
-    "glove_light": Material((70, 71, 73), 4),
-    "glove_palm": Material((58, 54, 48), 5),
-    "sleeve": Material((104, 108, 82), 6),
-    "sleeve_dark": Material((80, 84, 62), 5),
-    "cuff": Material((36, 36, 38), 3),
+SKIN = {  # skin texture origin (u, v) of the 4x12x4 box: arm, sleeve overlay
+    "right_arm": ((40, 16), (40, 32)),
+    "left_arm": ((32, 48), (48, 48)),
 }
-
-FINGER = 18.0     # finger thickness (mm)
-
-
-def _seg(k, name, p0, p1, x0, x1, th, mat, g, bev=2.0):
-    """Box from p0 to p1 (z, y) between x0 and x1, th thick, rounded."""
-    (z0, y0), (z1, y1) = p0, p1
-    L = math.hypot(z1 - z0, y1 - y0)
-    ang = math.degrees(math.atan2(-(y1 - y0), z1 - z0))
-    with k.frame("x", ang, 0, y0, z0):
-        k.bv(name, x0, y0 - th / 2, z0 - th * 0.15, x1, y0 + th / 2, z0 + L + th * 0.15, bev, mat, g)
+INFLATE = 0.25       # overlay layer, in texels (as in vanilla)
 
 
-def _forearm(k, name, wrist, w, h, pitch, yaw, g):
-    """Glove cuff + sleeve going back from the wrist (x, y, z)."""
-    x, y, z = wrist
+TEXEL_VIEW = 0.036   # one skin texel in first-person view space (blocks)
+
+
+def texel(fp_scale, unit_mm):
+    """Size of one skin texel in gun mm."""
+    return TEXEL_VIEW * 16 / fp_scale * unit_mm
+
+
+def direction(pitch, yaw):
+    """Unit vector from the hand towards the shoulder."""
+    p, y = math.radians(pitch), math.radians(yaw)
+    return (math.cos(p) * math.sin(y), -math.sin(p), math.cos(p) * math.cos(y))
+
+
+def _arm(k, bone, end, pitch, yaw, t):
+    """Arm box with its hand end centred on `end` (mm), body along direction()."""
+    x, y, z = end
+    (u, v), (ou, ov) = SKIN[bone]
     with k.frame("y", yaw, x, y, z):
-        with k.frame("x", pitch, x, y, z):
-            k.bv(name + "_wrist", x - w * 0.42, y - h * 0.42, z - 10, x + w * 0.42, y + h * 0.42, z + 40, 6,
-                 "glove", g)
-            k.bv(name + "_cuff", x - w * 0.5, y - h * 0.5, z + 40, x + w * 0.5, y + h * 0.5, z + 70, 6,
-                 "cuff", g)
-            k.bv(name + "_sleeve", x - w * 0.56, y - h * 0.56, z + 66, x + w * 0.56, y + h * 0.56, z + 330, 9,
-                 "sleeve", g, "wood")
-            k.bv(name + "_sleeve_end", x - w * 0.6, y - h * 0.6, z + 330, x + w * 0.6, y + h * 0.6, z + 520, 10,
-                 "sleeve_dark", g)
+        with k.frame("x", 90 + pitch, x, y, z):
+            c = k.b(bone + "_arm", x - 2 * t, y, z - 2 * t, x + 2 * t, y + 12 * t, z + 2 * t, "skin", bone)
+            c.skin_uv = (u, v, "arm")
+            e = INFLATE * t
+            c = k.b(bone + "_sleeve", x - 2 * t - e, y - e, z - 2 * t - e, x + 2 * t + e, y + 12 * t + e,
+                    z + 2 * t + e, "skin", bone)
+            c.skin_uv = (ou, ov, "arm")
+            # upper arm: carries on past the shoulder so the arm leaves the
+            # screen; textured with the sleeve rows of the skin
+            c = k.b(bone + "_upper", x - 2 * t + 0.01, y + 12 * t, z - 2 * t + 0.01, x + 2 * t - 0.01, y + 26 * t,
+                    z + 2 * t - 0.01, "skin", bone)
+            c.skin_uv = (u, v, "upper")
 
 
-def right_hand(k, spec, g="right_arm"):
+def add(m, k, spec, fp_scale):
+    """Add both arms (bones right_arm / left_arm) to model m via MM helper k.
+    Returns (bone pivots, palm points) in model units."""
+    m.materials.setdefault("skin", Material((180, 132, 106), 0, edge=False))
+    t = texel(fp_scale, k.u)
     (tz, ty), (bz, by) = spec["grip"]
-    hw, d = spec["grip_w"], spec["grip_d"]
-    rake = math.degrees(math.atan2(bz - tz, ty - by))     # bottom swept back = positive
-    top = ty - 4
-    with k.frame("x", -rake, 0, ty, tz):
-        zf, zb = tz - d, tz + d                          # front / back strap in the grip frame
-        # palm on the right side and the heel wrapping the back strap
-        k.bv("rh_palm", hw - 1, top - 92, zf + 6, hw + 20, top + 4, zb + 14, 6, "glove", g)
-        k.bv("rh_heel", -hw * 0.4, top - 92, zb - 2, hw + 16, top - 8, zb + 20, 7, "glove", g)
-        k.bv("rh_web", -hw - 4, top - 8, zb - 6, hw + 14, top + 10, zb + 16, 5, "glove", g)
-        # middle, ring and little finger wrapped round the front strap
-        for i in range(3):
-            y1 = top - 18 - i * 21
-            y0 = y1 - (FINGER - (2 if i == 2 else 0))
-            k.bv("rh_finger%d_front" % i, -hw - 3, y0, zf - FINGER, hw + 12, y1, zf + 1, 4, "glove", g)
-            k.bv("rh_finger%d_tip" % i, -hw - FINGER + 2, y0 + 0.5, zf - FINGER + 2, -hw + 1, y1 - 0.5,
-                 zf + d * 0.9, 4, "glove", g)
-            k.b("rh_knuckle%d" % i, hw + 12, y0 + 3, zf - 6, hw + 13, y1 - 3, zf + 4, "glove_light", g)
-        # thumb along the left side, pointing forward
-        k.bv("rh_thumb_base", -hw - 17, top - 18, zf + 8, -hw + 1, top + 2, zb + 10, 5, "glove", g)
-        k.bv("rh_thumb", -hw - 16, top - 14, zf - 22, -hw, top + 2, zf + 12, 5, "glove", g)
-        wrist = (hw * 0.4, top - 70, zb + 18)
-    # index finger on the trigger (gun space)
-    trz, tr_y = spec["trigger"]
-    kz, ky = tz - d * 0.6, ty - 6
-    kz, ky = _rot_zy(kz, ky, tz, ty, -rake)
-    _seg(k, "rh_index_a", (kz, ky), (trz + 10, tr_y + 2), hw + 2, hw + 18, FINGER - 2, "glove", g)
-    k.bv("rh_index_tip", -4, tr_y - 8, trz - 14, hw + 16, tr_y + 9, trz + 12, 4, "glove", g)
-    # forearm: back, down and slightly right
-    wx, wy, wz = wrist
-    wz2, wy2 = _rot_zy(wz, wy, tz, ty, -rake)
-    pitch, yaw = spec.get("right_dir", (28, 14))
-    _forearm(k, "rh_arm", (wx, wy2, wz2), 74, 66, pitch, yaw, g)
-    return (wx, wy2, wz2)
+    f = spec.get("grip_at", 0.55)                                   # where the hand closes
+    g = (0.0, ty + f * (by - ty), tz + f * (bz - tz))
+    rp, ryw = spec.get("right_dir", (48, 14))
+    dr = direction(rp, ryw)
+    r_end = tuple(g[i] - dr[i] * 1.8 * t for i in range(3))
+    _arm(k, "right_arm", r_end, rp, ryw, t)
 
-
-def left_hand(k, spec, g="left_arm"):
-    lf = spec["left"]
-    if lf["kind"] == "support":
-        return _support_hand(k, spec, g)
-    z, yt, yb, w = lf["z"], lf["y_top"], lf["y_bot"], lf["w"]
-    h = yt - yb
-    # palm cupped under the forend, heel on the near (left) side
-    k.bv("lh_palm", -w - 14, yb - 20, z - 46, w * 0.5, yb + 1, z + 46, 7, "glove_palm", g)
-    k.bv("lh_heel", -w - 18, yb - 16, z - 30, -w + 1, yb + h * 0.45, z + 52, 6, "glove", g)
-    # four fingers up the far (right) side
-    for i in range(4):
-        z0 = z - 46 + i * 23
-        k.bv("lh_finger%d" % i, w * 0.3, yb - 18, z0, w + 4, yb - 2, z0 + FINGER, 4, "glove", g)
-        k.bv("lh_finger%d_up" % i, w - 1, yb - 14, z0 + 1, w + FINGER - 2, yb + h * (0.7 - 0.06 * abs(i - 1.5)),
-             z0 + FINGER - 1, 4, "glove", g)
-    # thumb on the near side, pointing forward
-    k.bv("lh_thumb", -w - 16, yb + h * 0.25, z - 70, -w + 1, yb + h * 0.25 + 17, z - 10, 5, "glove", g)
-    k.bv("lh_thumb_base", -w - 18, yb + h * 0.1, z - 20, -w + 1, yb + h * 0.4, z + 20, 5, "glove", g)
-    wrist = (-w * 0.6, yb - 24, z + 46)
-    pitch, yaw = spec.get("left_dir", (34, -34))
-    _forearm(k, "lh_arm", wrist, 70, 62, pitch, yaw, g)
-    return wrist
-
-
-def _support_hand(k, spec, g):
-    """Pistol: the left hand wraps the right hand's fingers."""
-    (tz, ty), (bz, by) = spec["grip"]
-    hw, d = spec["grip_w"], spec["grip_d"]
-    rake = math.degrees(math.atan2(bz - tz, ty - by))
-    top = ty - 4
-    with k.frame("x", -rake, 0, ty, tz):
-        zf, zb = tz - d, tz + d
-        k.bv("lh_palm", -hw - 40, top - 92, zf - 10, -hw - 16, top - 6, zb + 8, 6, "glove", g)
-        for i in range(4):
-            y1 = top - 14 - i * 20
-            k.bv("lh_finger%d" % i, -hw - 20, y1 - FINGER, zf - FINGER * 2 - 2, hw + 16, y1, zf - FINGER + 2, 4,
-                 "glove", g)
-        k.bv("lh_thumb", -hw - 34, top - 6, zf - 30, -hw - 16, top + 10, zf + 26, 5, "glove", g)
-        wrist = (-hw - 30, top - 66, zb + 8)
-    wx, wy, wz = wrist
-    wz2, wy2 = _rot_zy(wz, wy, tz, ty, -rake)
-    pitch, yaw = spec.get("left_dir", (26, -24))
-    _forearm(k, "lh_arm", (wx, wy2, wz2), 70, 62, pitch, yaw, g)
-    return (wx, wy2, wz2)
-
-
-def _rot_zy(z, y, oz, oy, deg):
-    """Rotate (z, y) about (oz, oy) by a frame('x', deg) rotation."""
-    a = math.radians(deg)
-    dy, dz = y - oy, z - oz
-    return oz + dy * math.sin(a) + dz * math.cos(a), oy + dy * math.cos(a) - dz * math.sin(a)
-
-
-def add(m, k, spec):
-    """Add both arms to model m (MM helper k); returns bone pivots (model units)."""
-    for name, mat in MATS.items():
-        m.materials.setdefault(name, mat)
-    rw = right_hand(k, spec)
-    lw = left_hand(k, spec)
-    (tz, ty), _ = spec["grip"]
     lf = spec["left"]
     if lf["kind"] == "forend":
-        lpalm = (-lf["w"] * 0.3, lf["y_bot"] - 10, lf["z"])
-    else:
-        lpalm = (-spec["grip_w"] - 28, ty - 50, tz)
-    rpalm = (spec["grip_w"] + 10, ty - 40, tz)
+        lp, lyw = spec.get("left_dir", (40, -38))
+        dl = direction(lp, lyw)
+        f = (-0.4 * t, lf["y_bot"] - 1.7 * t, lf["z"])
+        l_end = tuple(f[i] - dl[i] * 1.4 * t for i in range(3))
+    else:  # pistol: the support hand closes beside and under the shooting hand
+        lp, lyw = spec.get("left_dir", (26, -22))
+        dl = direction(lp, lyw)
+        l_end = (r_end[0] - 3.8 * t, r_end[1] - 0.9 * t, r_end[2] + 0.6 * t)
+    _arm(k, "left_arm", l_end, lp, lyw, t)
+
     m.dynamic |= {"right_arm", "left_arm"}
-    # about one texel per 2.5 mm, whatever the gun's scale
-    m.group_density.update({"right_arm": 0.4 * k.u, "left_arm": 0.4 * k.u})
-    palms = {"right_arm": k.P(*rpalm), "left_arm": k.P(*lpalm)}
-    return {"right_arm": k.P(*rw), "left_arm": k.P(*lw)}, palms
+    palms = {"right_arm": k.P(*[r_end[i] + dr[i] * 1.5 * t for i in range(3)]),
+             "left_arm": k.P(*[l_end[i] + dl[i] * 1.0 * t for i in range(3)])}
+    return {"right_arm": k.P(*r_end), "left_arm": k.P(*l_end)}, palms
+
+
+# ---------------------------------------------------------------------------
+# default (Steve-like) arm texture in skin layout
+
+SHIRT = (0, 168, 168)
+SKIN_RGB = (176, 128, 102)
+
+
+def skin_faces(u, v, part="arm"):
+    """Skin-layout rectangles of the 4x12x4 box at (u, v): face -> (u0, v0, u1, v1),
+    named in model (Java) space for the vertical arm (as GeckoLib's box UV).
+    part "upper": the sides use only the 4 shoulder rows."""
+    x, y, d = 4, 12, 4
+    if part == "upper":
+        y = 4
+    return {
+        "east": (u, v + d, u + d, v + d + y),
+        "north": (u + d, v + d, u + d + x, v + d + y),
+        "west": (u + d + x, v + d, u + 2 * d + x, v + d + y),
+        "south": (u + 2 * d + x, v + d, u + 2 * d + 2 * x, v + d + y),
+        "up": (u + d, v, u + d + x, v + d),                       # shoulder
+        "down": (u + d + x, v, u + d + 2 * x, v + d),             # hand end
+    }
+
+
+def geo_faces(u, v, part="arm"):
+    """Per-face Bedrock UVs equal to GeckoLib's box UV for the 4x12x4 box."""
+    x, y, d = 4, 12, 4
+    if part == "upper":
+        y = 4
+    return {
+        "east": {"uv": [u, v + d], "uv_size": [d, y]},
+        "west": {"uv": [u + d + x, v + d], "uv_size": [d, y]},
+        "north": {"uv": [u + d, v + d], "uv_size": [x, y]},
+        "south": {"uv": [u + 2 * d + x, v + d], "uv_size": [x, y]},
+        "up": {"uv": [u + d, v], "uv_size": [x, d]},
+        "down": {"uv": [u + d + x, v + d], "uv_size": [x, -d]},
+    }
+
+
+def paint_default(px):
+    """Steve-like arms (cyan sleeve, skin) in the 64x64 corner; overlays stay clear."""
+    rng = random.Random(7)
+    for bone, ((u, v), _) in SKIN.items():
+        for face, (u0, v0, u1, v1) in skin_faces(u, v).items():
+            for yy in range(v0, v1):
+                for xx in range(u0, u1):
+                    row = yy - v0
+                    if face == "up":
+                        col = SHIRT
+                    elif face == "down":
+                        col = SKIN_RGB
+                    else:
+                        col = SHIRT if row < 4 else SKIN_RGB
+                    shade = {"north": 0, "east": -10, "west": -10, "south": -18, "up": 8, "down": -14}[face]
+                    if col == SKIN_RGB and face not in ("up", "down") and row == 11:
+                        shade -= 8           # hand end a touch darker
+                    if col == SHIRT and row == 3 and face not in ("up", "down"):
+                        shade -= 16          # sleeve hem
+                    n = rng.randint(-5, 5)
+                    px[xx, yy] = tuple(max(0, min(255, c + shade + n)) for c in col) + (255,)

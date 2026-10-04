@@ -64,49 +64,118 @@ def posed_model(model, pose):
     return pm
 
 
-def to_view(model, display):
-    """Copy of a (posed) model moved into first-person view space (1/16
-    block, eye at the origin): item point p -> 16 * (0.56, -0.52, -0.72) + t
-    + s * (p - 8) for the right hand with zero display rotation; shifted by
-    8 for render().  Cubes behind the near plane are dropped."""
-    import copy
+FP_BASE = (0.56, -0.52, -0.72)     # vanilla right-hand item offset (blocks)
+
+
+def _clip_near(poly, near):
+    """Sutherland-Hodgman clip of [(x, y, z, u, v)] against z <= -near."""
+    out = []
+    n = len(poly)
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]
+        ina, inb = a[2] <= -near, b[2] <= -near
+        if ina:
+            out.append(a)
+        if ina != inb:
+            t = (-near - a[2]) / (b[2] - a[2])
+            out.append(tuple(a[j] + (b[j] - a[j]) * t for j in range(5)))
+    return out
+
+
+def render_fp(model, display, size=(480, 270), fov=70.0, near=0.05, bg=(150, 176, 206), cross=True):
+    """Perspective first-person render, as Minecraft draws a held item: item
+    point p -> FP_BASE + t / 16 + s / 16 * (p - 8) (blocks, eye at the
+    origin looking down -Z), vertical field of view `fov`."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    W, H = size
     fp = display["firstperson_righthand"]
-    t, s = fp["translation"], fp["scale"][0]
-    base = [16 * 0.56 + t[0], 16 * -0.52 + t[1], 16 * -0.72 + t[2]]
+    tr_, sc = fp["translation"], fp["scale"][0]
+    base = [FP_BASE[i] + tr_[i] / 16 for i in range(3)]
+    rr = [math.radians(v) for v in fp["rotation"]]
+    Rx = [[1, 0, 0], [0, math.cos(rr[0]), -math.sin(rr[0])], [0, math.sin(rr[0]), math.cos(rr[0])]]
+    Ry = [[math.cos(rr[1]), 0, math.sin(rr[1])], [0, 1, 0], [-math.sin(rr[1]), 0, math.cos(rr[1])]]
+    Rz = [[math.cos(rr[2]), -math.sin(rr[2]), 0], [math.sin(rr[2]), math.cos(rr[2]), 0], [0, 0, 1]]
+    R = bbgen.mat_mul3(bbgen.mat_mul3(Rx, Ry), Rz)
+    f = (H / 2) / math.tan(math.radians(fov / 2))
+    light = (0.35, 0.85, 0.4)
+    ln = math.sqrt(sum(v * v for v in light))
+    light = [v / ln for v in light]
+    tex = np.asarray(model.texture.convert("RGBA")).astype(np.float32)
+    col = np.zeros((H, W, 3), np.float32)
+    col[:] = bg
+    zbuf = np.zeros((H, W), np.float32)          # stores 1/w, larger = closer
 
-    def tr(p):
-        return [8 + base[i] + s * (p[i] - 8) for i in range(3)]
+    def view(p):
+        q = bbgen.mat_vec(R, [p[i] - 8 for i in range(3)])
+        return [base[i] + sc / 16 * q[i] for i in range(3)]
 
-    vm = copy.copy(model)
-    vm.cubes = []
     for c in model.cubes:
-        c2 = copy.copy(c)
-        c2.frm, c2.to = tr(c.frm), tr(c.to)
-        if c.rot:
-            c2.rot = ("e", c.rot[1], tr(c.rot[2]))
-        if (c2.frm[2] + c2.to[2]) / 2 - 8 > -0.8:
-            continue
-        vm.cubes.append(c2)
-    return vm
-
-
-def frame_png(model, display, pose, size=(480, 320), yaw=14, pitch=8, half_w=13.0):
-    """First-person frame seen slightly from the left of the eye (a straight
-    orthographic view down the barrel shows nothing); the red cross marks
-    the screen centre."""
-    from PIL import ImageDraw
-    vm = to_view(posed_model(model, pose), display)
-    hh = half_w * size[1] / size[0]
-    vm.bounds = lambda: ([8 - half_w, 8 - hh, 8], [8 + half_w, 8 + hh, 8])
-    im = bbgen.render(vm, yaw, pitch, size[0], size[1], ss=1)
-    d = ImageDraw.Draw(im)
-    cx, cy = size[0] // 2, size[1] // 2
-    d.line([(cx - 5, cy), (cx + 5, cy)], fill=(230, 40, 40))
-    d.line([(cx, cy - 5), (cx, cy + 5)], fill=(230, 40, 40))
+        for face in bbgen.FACES:
+            if face not in c.uv:
+                continue
+            tl, tr, bl = (bbgen.rotate(p, c.rot) for p in bbgen.face_corners(c, face))
+            br = tuple(tr[i] + bl[i] - tl[i] for i in range(3))
+            e1 = [tr[i] - tl[i] for i in range(3)]
+            e2 = [bl[i] - tl[i] for i in range(3)]
+            nrm = (e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0])
+            nl = math.sqrt(sum(v * v for v in nrm)) or 1
+            nrm = [-v / nl for v in nrm]
+            vtl = view(tl)
+            if sum(nrm[i] * -vtl[i] for i in range(3)) <= 0:
+                continue
+            u0, v0, u1, v1 = c.uv[face]
+            poly = [tuple(view(tl)) + (u0, v0), tuple(view(tr)) + (u1, v0),
+                    tuple(view(br)) + (u1, v1), tuple(view(bl)) + (u0, v1)]
+            poly = _clip_near(poly, near)
+            if len(poly) < 3:
+                continue
+            shade = 0.55 + 0.45 * max(0.0, sum(nrm[i] * light[i] for i in range(3)))
+            umin, umax = min(u0, u1), max(u0, u1) - 1
+            vmin, vmax = min(v0, v1), max(v0, v1) - 1
+            pts = [(W / 2 + f * x / -z, H / 2 - f * y / -z, 1.0 / -z, u, v) for x, y, z, u, v in poly]
+            for k in range(1, len(pts) - 1):
+                A, B, C = pts[0], pts[k], pts[k + 1]
+                det = (B[0] - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (B[1] - A[1])
+                if abs(det) < 1e-9:
+                    continue
+                x0 = max(0, int(min(A[0], B[0], C[0])))
+                x1 = min(W, int(max(A[0], B[0], C[0])) + 2)
+                y0 = max(0, int(min(A[1], B[1], C[1])))
+                y1 = min(H, int(max(A[1], B[1], C[1])) + 2)
+                if x1 <= x0 or y1 <= y0:
+                    continue
+                gx, gy = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+                l1 = ((gx - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (gy - A[1])) / det
+                l2 = ((B[0] - A[0]) * (gy - A[1]) - (gx - A[0]) * (B[1] - A[1])) / det
+                l0 = 1 - l1 - l2
+                m_ = (l0 >= 0) & (l1 >= 0) & (l2 >= 0)
+                if not m_.any():
+                    continue
+                iw = l0 * A[2] + l1 * B[2] + l2 * C[2]
+                uu = (l0 * A[3] * A[2] + l1 * B[3] * B[2] + l2 * C[3] * C[2]) / iw
+                vv = (l0 * A[4] * A[2] + l1 * B[4] * B[2] + l2 * C[4] * C[2]) / iw
+                tu = np.clip(np.floor(uu).astype(int), umin, umax)
+                tv = np.clip(np.floor(vv).astype(int), vmin, vmax)
+                texel = tex[tv, tu]
+                zb = zbuf[y0:y1, x0:x1]
+                m_ &= (texel[..., 3] > 127) & (iw > zb)
+                zb[m_] = iw[m_]
+                cb = col[y0:y1, x0:x1]
+                cb[m_] = texel[..., :3][m_] * shade
+    im = Image.fromarray(np.clip(col, 0, 255).astype(np.uint8), "RGB")
+    if cross:
+        d = ImageDraw.Draw(im)
+        d.line([(W // 2 - 5, H // 2), (W // 2 + 5, H // 2)], fill=(255, 255, 255))
+        d.line([(W // 2, H // 2 - 5), (W // 2, H // 2 + 5)], fill=(255, 255, 255))
     return im
 
 
-def gif(model, display, spec, path, fps=16):
+def frame_png(model, display, pose, size=(480, 270)):
+    return render_fp(posed_model(model, pose), display, size)
+
+
+def gif(model, display, spec, path, fps=12):
     from PIL import Image
     n = max(2, int(spec["length"] * fps) + 1)
     frames = []

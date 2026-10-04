@@ -111,7 +111,6 @@ class Model:
         self.name = name
         self.materials = materials
         self.density = density  # texels per model unit
-        self.group_density = {}  # bone -> texels per unit override (e.g. arms)
         self.cubes = []
         self.groups = []  # ordered group names (become GeckoLib bones)
         self.pivots = {}  # group -> pivot (animation centre)
@@ -378,16 +377,41 @@ class Model:
         for c in cuts[1:]:
             if c - bounds[-1] > min(step * 0.25, 0.06) or c == cuts[-1]:
                 bounds.append(c)
+        def slope_at(zm, y):
+            """|dy/dz| of the outline edge passing through (zm, ~y)."""
+            best, sl = None, 0.0
+            for (za, ya), (zb, yb) in edges:
+                if (za <= zm < zb) or (zb <= zm < za):
+                    yy = ya + (yb - ya) * (zm - za) / (zb - za)
+                    if best is None or abs(yy - y) < best:
+                        best, sl = abs(yy - y), abs((yb - ya) / (zb - za))
+            return sl
+
+        verticals = [(za, min(ya, yb), max(ya, yb)) for (za, ya), (zb, yb) in edges if abs(zb - za) < 1e-6]
+        # the fill stays a chamfer's depth inside the outline, so its corners
+        # never poke through the chamfered edge strips
+        inset = bevel if bevel >= 0.04 else 0.0
         k = 0
         for z, z2 in zip(bounds, bounds[1:]):
-            mids = intervals((z + z2) / 2)
+            zm = (z + z2) / 2
+            mids = intervals(zm)
             ends = intervals(z + 1e-4) + intervals(z2 - 1e-4)
             for lo, hi in mids:
                 for elo, ehi in ends:
                     if elo < hi and ehi > lo:
                         lo, hi = max(lo, elo), min(hi, ehi)
-                if hi - lo > 0.02:
-                    self.box("%s_f%03d" % (name, k), x0 + 0.01, lo, z, x1 - 0.01, hi, z2, fill, group, pattern)
+                za_, zb_ = z, z2
+                if inset:
+                    lo += inset * math.sqrt(1 + slope_at(zm, lo) ** 2)
+                    hi -= inset * math.sqrt(1 + slope_at(zm, hi) ** 2)
+                    for ze, ylo, yhi in verticals:
+                        if ylo < hi and yhi > lo:
+                            if abs(ze - z) < 1e-6:
+                                za_ = z + inset
+                            if abs(ze - z2) < 1e-6:
+                                zb_ = z2 - inset
+                if hi - lo > 0.02 and zb_ - za_ > 0.01:
+                    self.box("%s_f%03d" % (name, k), x0 + 0.01, lo, za_, x1 - 0.01, hi, zb_, fill, group, pattern)
                     k += 1
         ei = 0
         for (za, ya), (zb, yb) in edges:
@@ -499,7 +523,7 @@ class Model:
         sx, sy, sz = (c.to[i] - c.frm[i] for i in range(3))
         w, h = {"north": (sx, sy), "south": (sx, sy), "east": (sz, sy),
                 "west": (sz, sy), "up": (sx, sz), "down": (sx, sz)}[face]
-        d = self.group_density.get(c.group, self.density)
+        d = self.density
         return max(1, int(round(w * d))), max(1, int(round(h * d)))
 
     def hidden_faces(self):
@@ -542,7 +566,10 @@ class Model:
     def build_texture(self):
         self.hidden = self.hidden_faces()
         items = []
+        skin = [c for c in self.cubes if getattr(c, "skin_uv", None)]
         for ci, c in enumerate(self.cubes):
+            if getattr(c, "skin_uv", None):
+                continue
             for f in FACES:
                 if (ci, f) in self.hidden:
                     continue
@@ -551,8 +578,9 @@ class Model:
         # shelf packing, tallest first; grow the square atlas until it fits
         items.sort(key=lambda t: (-t[0], -t[1]))
         size = 64
+        reserve = 64 if skin else 0   # player-skin layout corner for the arms
         while True:
-            placed = pack(items, size)
+            placed = pack(items, size, reserve)
             if placed is not None:
                 break
             size *= 2
@@ -563,6 +591,12 @@ class Model:
             c = self.cubes[ci]
             c.uv[f] = (ux, uy, ux + w, uy + h)
             paint_face(px, c, f, ux, uy, w, h, self.materials[c.mat])
+        if skin:
+            import arms
+            arms.paint_default(px)
+            for c in skin:
+                c.uv = arms.skin_faces(*c.skin_uv)
+                c.geo_uv = arms.geo_faces(*c.skin_uv)
         self.texture = img
         return img
 
@@ -626,7 +660,7 @@ class Model:
                         uv[f] = {"uv": [u1, v1], "uv_size": [u0 - u1, v0 - v1]}
                     else:
                         uv[f] = {"uv": [u0, v0], "uv_size": [u1 - u0, v1 - v0]}
-                cube["uv"] = uv
+                cube["uv"] = getattr(c, "geo_uv", None) or uv
                 cubes.append(cube)
             p = self.group_pivot(g)
             bones.append({"name": g, "parent": "root", "pivot": rnd([8 - p[0], p[1], p[2] - 8]),
@@ -739,9 +773,12 @@ def rnd(v):
     return out
 
 
-def pack(items, size):
-    """Skyline bottom-left packer; returns {item: (x, y)} or None."""
+def pack(items, size, reserve=0):
+    """Skyline bottom-left packer; returns {item: (x, y)} or None.  The
+    top-left reserve x reserve corner is kept free."""
     sky = [0] * size
+    for i in range(min(reserve, size)):
+        sky[i] = reserve
     placed = {}
     for it in items:
         h, w = it[0], it[1]

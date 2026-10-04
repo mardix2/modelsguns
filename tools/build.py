@@ -64,13 +64,19 @@ def transform(rot_matrix, scale, point, target=(0, 0, 0)):
     return {"rotation": euler_xyz(rot_matrix), "translation": t, "scale": [round(scale, 3)] * 3}
 
 
-def display_for(model, grip, hand_scale, fp_scale, gui_scale, gui_tilt, fp_push):
+FP_BASE = (0.56, -0.52, -0.72)   # vanilla first-person right-hand item offset (blocks)
+
+
+def display_for(model, grip, hand_scale, fp_scale, gui_scale, gui_tilt, fp_pos, fp_rot=(0, 0, 0)):
     lo, hi = model.bounds()
     centre = [(a + b) / 2 for a, b in zip(lo, hi)]
     # third person: item +y = forward, +z = up  ->  model -Z forward, +Y up
     tp = transform(rx(90), hand_scale, grip, (0, 1.5, -1.0))
     # first person: view -Z is forward, same as the model
-    fp = transform(rz(0), fp_scale, grip, (0, -1.0, fp_push))
+    # first person: the grip lands on fp_pos (view space, blocks: right, up,
+    # forward negative); view -Z is forward, same as the model
+    fp_m = mat_mul(mat_mul(rx(fp_rot[0]), ry(fp_rot[1])), rz(fp_rot[2]))
+    fp = transform(fp_m, fp_scale, grip, [(fp_pos[i] - FP_BASE[i]) * 16 for i in range(3)])
     # inventory: right side towards the viewer, muzzle to the right, tilted up
     gui_rot = mat_mul(rz(gui_tilt), ry(-90))
     gui = transform(gui_rot, gui_scale, centre)
@@ -129,19 +135,33 @@ def sight_line(cubes):
     return top.to[1], (top.frm[2] + top.to[2]) / 2
 
 
-def ads_offset(display, cubes):
-    """Root offset (model px) putting the sight line on the screen centre.
+def ads_offset(display, cubes, pivot, dist=0.42, above=0.0, eye_behind_grip=None):
+    """Root pose (position px, rotation deg) putting the sight line on the
+    screen centre.
 
     First person, right hand: an item point p ends up at
-    (0.56, -0.52, -0.72) + t / 16 + s / 16 * (p - 8) in view space (blocks),
-    with the display rotation at zero."""
+    FP_BASE + t / 16 + s / 16 * R (p - 8) in view space (blocks).  The root
+    rotation undoes the display rotation R (so the bore is parallel to the
+    view axis) and the position moves the sight line onto x = y = 0.  Depth:
+    pistols put the rear sight `dist` blocks in front of the eye; long guns
+    put the eye `eye_behind_grip` blocks behind the grip, over the comb of
+    the stock, as with a real cheek weld."""
     fp = display["firstperson_righthand"]
     t, s = fp["translation"], fp["scale"][0]
+    r = fp["rotation"]
+    R = mat_mul(mat_mul(rx(r[0]), ry(r[1]), ), rz(r[2]))
+    Rt = [[R[j][i] for j in range(3)] for i in range(3)]
     ys, zs = sight_line(cubes)
-    dx = -(0.56 + t[0] / 16) * 16 / s
-    dy = (0.52 - t[1] / 16) * 16 / s - (ys - 8) + 0.1
-    dz = max(0.0, (-0.32 + 0.72 - t[2] / 16) * 16 / s - (zs - 8))
-    return [round(dx, 3), round(dy, 3), round(dz, 3)]
+    if eye_behind_grip is not None:
+        zs, dist = pivot[2], eye_behind_grip
+    ps = [8, ys - 0.1 + above, zs]
+    target = [0.0, 0.0, -dist]
+    # base + t/16 + s/16 * [(ps - pivot) + R (pivot - 8 + dp)] = target
+    w = [(target[i] - FP_BASE[i] - t[i] / 16) * 16 / s - (ps[i] - pivot[i]) for i in range(3)]
+    q = apply(Rt, w)
+    dp = [q[i] - (pivot[i] - 8) for i in range(3)]
+    rot = euler_xyz(Rt)
+    return [round(v, 3) for v in dp], [round(v, 3) for v in rot]
 
 
 def group_box(m, group, name_prefix=None):
@@ -160,52 +180,99 @@ def full_animations(mod, m, display, palms, gun_cubes):
 
     import anims
     c = dict(mod.ANIM)
-    c["ads"] = {"pos": ads_offset(display, gun_cubes or m.cubes)}
+    pistol = getattr(mod, "ARMS", {}).get("left", {}).get("kind") == "support"
+    # guns without iron sights (bare rail) are aimed over the rail, as if
+    # through an optic at the usual height
+    above = c.get("aim_above_mm", 0.0) / mod.U
+    pos, rot = ads_offset(display, gun_cubes or m.cubes, m.root_pivot, 0.52, above,
+                          None if pistol else c.get("eye_behind_grip", 0.24))
+    c["ads"] = {"pos": pos, "rot": rot}
     out = copy.deepcopy(mod.ANIMATIONS)
     for k, v in anims.standard_extras(c).items():
         out.setdefault(k, v)
     if not palms:
         return out
-    U = mod.U
-    groups = set(m.groups)
-    lp, rp = palms["left_arm"], palms["right_arm"]
-    mag = c.get("mag", "magazine")
-    mag_target = None
-    if mag in groups:
-        lo, hi = group_box(m, mag)
-        bottom = [c_ for c_ in m.cubes if c_.group == mag and c_.frm[1] < lo[1] + 0.6]
-        zc = sum((c_.frm[2] + c_.to[2]) / 2 for c_ in bottom) / len(bottom)
-        mag_target = [8 - lp[0], lo[1] - 8 / U - lp[1], zc - lp[2]]
-    charge = c.get("charging", (None,))[0]
+    hands = c.get("hands", {"left_arm": [("magazine", None, None)]})
     for name, spec in out.items():
-        bones = spec["bones"]
-        moved = lambda b: any(any(abs(x) > 1e-6 for x in (v[0] if isinstance(v, tuple) else v))  # noqa: E731
-                              for v in bones.get(b, {}).get("position", {}).values())
-        if mag_target and moved(mag):
-            anims.follow(spec, "left_arm", mag, mag_target)
-        elif charge and moved(charge):
-            box = group_box(m, charge)
-            if box:
-                ctr = [(a + b) / 2 for a, b in zip(*box)]
-                tgt = [ctr[0] - lp[0], ctr[1] - lp[1], ctr[2] - lp[2]]
-                anims.follow(spec, "left_arm", charge, tgt)
-        if "pump" in groups and moved("pump"):
-            if "shell" in groups and moved("shell"):
-                box = group_box(m, "shell")
-                ctr = [(a + b) / 2 for a, b in zip(*box)]
-                anims.follow(spec, "left_arm", "shell", [ctr[0] - lp[0], box[0][1] - lp[1], ctr[2] - lp[2]])
-            else:
-                anims.ride(spec, "left_arm", "pump")
-        elif "shell" in groups and moved("shell"):
-            box = group_box(m, "shell")
-            ctr = [(a + b) / 2 for a, b in zip(*box)]
-            anims.follow(spec, "left_arm", "shell", [ctr[0] - lp[0], box[0][1] - lp[1], ctr[2] - lp[2]])
-        if "bolt" in groups and moved("bolt") and group_box(m, "bolt", "bolt_knob") and not c.get("action"):
-            lo, hi = group_box(m, "bolt", "bolt_knob")
-            ctr = [(a + b) / 2 for a, b in zip(lo, hi)]
-            anims.follow(spec, "right_arm", "bolt", [ctr[0] - rp[0], ctr[1] - rp[1], ctr[2] - rp[2]],
-                         reach=0.15, back=0.2)
+        for arm, parts in hands.items():
+            segs = []
+            for bone, prefix, only in parts:
+                if only and name not in only:
+                    continue
+                if bone not in m.groups:
+                    continue
+                if bone == c.get("mag", "magazine"):
+                    lo, hi = group_box(m, bone)
+                    base = [c_ for c_ in m.cubes if c_.group == bone and c_.frm[1] < lo[1] + 1.0]
+                    zc = sum((c_.frm[2] + c_.to[2]) / 2 for c_ in base) / len(base)
+                    point = [8, lo[1] - 6 / mod.U, zc]                        # hold it by the base
+                else:
+                    lo, hi = group_box(m, bone, prefix)
+                    point = [(a_ + b_) / 2 for a_, b_ in zip(lo, hi)]
+                ride = bone == "pump"
+                delta = [0, 0, 0] if ride else [point[i] - palms[arm][i] for i in range(3)]
+                for win in bone_windows(spec, bone):
+                    segs.append((win, bone, point, delta, ride))
+            if segs:
+                arm_track(spec, arm, segs, m.group_pivot)
     return out
+
+
+def bone_windows(spec, bone, merge=0.16):
+    """Time intervals in which a bone moves (between keys that differ)."""
+    import animpreview
+    chans = spec["bones"].get(bone, {})
+    times = sorted({t for ch in chans.values() for t in ch})
+    out = []
+    for ta, tb in zip(times, times[1:]):
+        va = [animpreview.sample(ch, ta) for ch in chans.values()]
+        vb = [animpreview.sample(ch, tb) for ch in chans.values()]
+        if any(abs(x - y) > 1e-4 for a_, b_ in zip(va, vb) for x, y in zip(a_, b_)):
+            if out and ta - out[-1][1] < merge:
+                out[-1][1] = tb
+            else:
+                out.append([ta, tb])
+    return [tuple(w) for w in out]
+
+
+def point_offset(spec, bone, pivot, point, t):
+    """How far `point` of `bone` has moved at time t (model px)."""
+    import animpreview
+    chans = spec["bones"].get(bone, {})
+    pos = animpreview.sample(chans["position"], t) if "position" in chans else [0, 0, 0]
+    rot = animpreview.sample(chans["rotation"], t) if "rotation" in chans else [0, 0, 0]
+    r = bbgen.euler_matrix(rot)
+    q = bbgen.mat_vec(r, [point[i] - pivot[i] for i in range(3)])
+    return [q[i] + pivot[i] + pos[i] - point[i] for i in range(3)]
+
+
+def arm_track(spec, arm, segs, pivot_of, reach=0.2, back=0.28, rate=20):
+    """Position keys for an arm doing the jobs in `segs` one after another:
+    reach the part, move with it (sampled), go back to the grip / forend."""
+    keys = [(0.0, [0, 0, 0], None)]
+    L = spec["length"]
+    segs = sorted(segs, key=lambda s: s[0][0])
+    for i, ((t0, t1), bone, point, delta, ride) in enumerate(segs):
+        pv = pivot_of(bone)
+        start = max(keys[-1][0], t0 - (0 if ride else reach))
+        if start > keys[-1][0] + 0.02 and any(abs(x) > 1e-6 for x in keys[-1][1]) is False:
+            keys.append((start, [0, 0, 0], None))
+        n = max(1, int((t1 - t0) * rate))
+        for j in range(n + 1):
+            t = t0 + (t1 - t0) * j / n
+            if t <= keys[-1][0] + 1e-4:
+                continue
+            off = point_offset(spec, bone, pv, point, t)
+            keys.append((t, [delta[q] + off[q] for q in range(3)], "easeInOutSine" if j == 0 else None))
+        nxt = segs[i + 1][0][0] - reach if i + 1 < len(segs) else L + 1
+        end = min(L, t1 + (0 if ride else back))
+        if end > keys[-1][0] + 1e-4 and end <= nxt:
+            keys.append((end, [0, 0, 0], "easeInOutSine"))
+    ch = spec["bones"].setdefault(arm, {}).setdefault("position", {})
+    ch.clear()
+    for t, v, e in keys:
+        t = round(t, 4)
+        ch[t] = ([round(x, 4) for x in v], e) if e else [round(x, 4) for x in v]
 
 
 GUN_MODULES = ["mk18", "glock17", "ak47", "deagle", "mp5a5", "m870", "awm"]
@@ -219,7 +286,10 @@ def prepare(mod):
     grip = [a + b for a, b in zip(mod.GRIP_POINT, shift)]
     m.root_pivot = grip
     dp = mod.DISPLAY
-    display = display_for(m, grip, dp["hand"], dp["fp"], dp["gui"], dp["tilt"], dp["push"])
+    pistol = getattr(mod, "ARMS", {}).get("left", {}).get("kind") == "support"
+    fp_pos = dp.get("fp_pos", (0.22, -0.25, -0.42) if pistol else (0.26, -0.31, -0.50))
+    fp_rot = dp.get("fp_rot", (0, 8, 0) if pistol else (0, 10, 0))
+    display = display_for(m, grip, dp["hand"], dp["fp"], dp["gui"], dp["tilt"], fp_pos, fp_rot)
     gun_cubes = None
     palms = {}
     if hasattr(mod, "ARMS"):
@@ -227,7 +297,7 @@ def prepare(mod):
         # not change the gun's framing in hand / GUI)
         gun_cubes = list(m.cubes)
         n0 = len(m.cubes)
-        piv, palms = arms.add(m, bbgen.MM(m, mod.U), mod.ARMS)
+        piv, palms = arms.add(m, bbgen.MM(m, mod.U), mod.ARMS, mod.DISPLAY["fp"])
         for c in m.cubes[n0:]:
             c.shift(shift)
         m.pivots.update({g: [a + b for a, b in zip(p, shift)] for g, p in piv.items()})
@@ -240,7 +310,7 @@ def fp_preview(m, display, anim_set):
     from PIL import Image
 
     import animpreview
-    out = Image.new("RGB", (960, 320))
+    out = Image.new("RGB", (960, 270))
     for i, name in enumerate(("idle", "aim")):
         pose = animpreview.pose_at(m, anim_set[name], 0.0)
         out.paste(animpreview.frame_png(m, display, pose), (480 * i, 0))

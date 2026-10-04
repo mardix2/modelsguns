@@ -157,6 +157,7 @@ ARMS = {
 DISPLAY = {"hand": 0.32, "fp": 0.34, "gui": 0.28, "tilt": 25, "push": -1.5}
 
 ANIM = {
+    "hands": {"left_arm": [("magazine", None, None), ("cocking_handle", "cocking_knob", None)]},
     "trigger": True, "trigger_angle": 12,
     "selector": ("selector", [-40, 0, 0]),
     "charging": ("cocking_handle", 120 / U), "charging_moves_action": False,
