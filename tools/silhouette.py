@@ -25,11 +25,17 @@ OUT = os.path.join(HERE, "silhouettes")
 GUNS = {
     "deagle": dict(photo="1.webp", crop=(0, 0, 1024, 548), rect=(8, 15, 1005, 530)),
     "ak47": dict(photo="2.webp", crop=(0, 60, 1280, 400), rect=(15, 25, 1240, 330), threshold=30,
-                 furniture="wood"),
+                 gc_xmax=330, furniture="wood"),
     "mp5": dict(photo="5.png", crop=(0, 0, 600, 272), rect=(15, 20, 585, 250), flip=True),
     "m870": dict(photo="6.webp", crop=(0, 330, 2000, 1000), rect=(0, 50, 1960, 500), level=(60, 760),
                  furniture="wood"),
     "awm": dict(photo="7.png", crop=(0, 0, 1177, 330), alpha=True, furniture="green"),
+    "m1911": dict(photo="8.webp", crop=(0, 0, 1024, 768), threshold=26, flip=True, furniture="wood",
+                  level=(560, 900)),
+    "m9a4": dict(photo="9.png", crop=(0, 0, 700, 700), alpha=True, level=(250, 470), flip=True),
+    "p320": dict(photo="10.webp", crop=(0, 0, 1024, 758), threshold=26, furniture="wood"),
+    "mk23": dict(photo="11.jpg", crop=(0, 0, 700, 425), threshold=26, furniture="wood"),
+    "rhino": dict(photo="12.webp", crop=(0, 0, 1024, 666), threshold=14, rect=(5, 20, 1015, 660), flip=True),
 }
 
 
@@ -87,7 +93,12 @@ def transform(m, rot, flip):
 def main(photo_dir):
     os.makedirs(OUT, exist_ok=True)
     meta = {}
+    only = sys.argv[2:]
+    if os.path.exists(os.path.join(OUT, "sources.json")):
+        meta.update(json.load(open(os.path.join(OUT, "sources.json"))))
     for name, c in GUNS.items():
+        if only and name not in only:
+            continue
         im = np.array(Image.open(os.path.join(photo_dir, c["photo"])).convert("RGBA"))
         x0, y0, x1, y1 = c["crop"]
         im = im[y0:y1, x0:x1]
@@ -96,7 +107,9 @@ def main(photo_dir):
             m = im[..., 3] > 100
         elif c.get("threshold"):
             m = threshold(rgb, c["threshold"])
-            m = ndi.binary_closing(m, iterations=3) | (grabcut(rgb, c["rect"]) & (np.arange(m.shape[1]) < 330)[None, :])
+            m = ndi.binary_closing(m, iterations=3)
+            if c.get("rect"):   # grabcut where the threshold is weak (x < gc_xmax)
+                m |= grabcut(rgb, c["rect"]) & (np.arange(m.shape[1]) < c.get("gc_xmax", 10 ** 6))[None, :]
         else:
             m = grabcut(rgb, c["rect"])
         m = ndi.binary_opening(m, iterations=1)

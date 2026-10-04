@@ -15,19 +15,19 @@
 | H&K MP5 (A2, как на фото) | `mp5a5` | cocking_handle, trigger, selector, magazine |
 | Remington 870 Express | `m870` | pump, trigger, shell |
 | AI AWM .338 | `awm` | bolt, trigger, magazine |
-| Colt M1911A1 | `m1911` | slide, barrel, hammer, trigger (ход назад), magazine, slide_stop |
-| Beretta M9A4 | `m9a4` | slide, barrel, hammer, trigger, magazine, slide_stop |
-| SIG Sauer P320 (M17) | `p320` | slide, barrel, trigger, magazine, slide_stop |
-| HK Mk23 | `mk23` | slide, barrel, hammer, trigger, magazine, slide_stop |
-| Chiappa Rhino 60DS | `rhino` | crane → cylinder → rounds (вложенные кости), hammer, trigger |
+| Colt M1911A1 (паркеризация, коричневые щёчки) | `m1911` | slide, barrel, hammer, trigger (ход назад), magazine, slide_stop |
+| Beretta M9A4 (вся FDE, резьбовой ствол) | `m9a4` | slide, barrel, hammer, trigger, magazine, slide_stop |
+| SIG Sauer P320 AXG (чёрный, красные деревянные щёчки) | `p320` | slide, barrel, trigger, magazine, slide_stop |
+| HK Mk23 (чёрный затвор, рамка FDE) | `mk23` | slide, barrel, hammer, trigger, magazine, slide_stop |
+| Chiappa Rhino 60DS (нержавейка, «Aristocrat») | `rhino` | crane → cylinder → rounds (вложенные кости), hammer, trigger |
 
 У всех ещё есть кости рук `right_arm` и `left_arm` (см. ниже).
 
 Только само оружие: без прицелов, фонарей и прочего обвеса (у MK18 и AWM — только
-планки). Пистолеты M1911A1, M9A4, P320, Mk23 и Rhino построены по заводским
-размерам (фото к ним не было). Все семь стволов построены по референсным фото: контур каждой детали
-снят с фото в миллиметрах (силуэты — в `tools/silhouettes/`, сами фото в
-репозиторий не входят), толщины — по реальным размерам. У фото MK18 сильная
+планки). Все двенадцать стволов построены по референсным фото: контур каждой
+детали снят с фото в миллиметрах (силуэты — в `tools/silhouettes/`, сами фото в
+репозиторий не входят), толщины — по реальным размерам, цвета — как на фото.
+У фото M9A4 разный масштаб по длине и по высоте — учтён отдельно (`tools/m9a4.py`). У фото MK18 сильная
 перспектива, масштаб по длине скорректирован (`tools/mk18.py`, `scale()`); Glock
 снят в ракурсе ¾, поэтому его профиль построен по заводским размерам, а детали
 Gen5 (насечки, скос носа затвора, расширенная шахта с вырезом) — по фото. MP5

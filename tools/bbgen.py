@@ -439,23 +439,35 @@ class Model:
                     d += t / 24
                 t_e = min(t_e, max(d * 0.92, probe))
             e = 0.02
+            # at a reflex (inner) corner the strip runs on past the vertex, so
+            # the wedge between it, the next strip and the inset fill is closed
+            ext = min(t_e, 2.5 * max(bevel, 0.04))
+            uz, uy = dz / L, dy / L
+            iz, iy = sgn * nz, sgn * ny
+
+            def runs_on(vz, vy, d):
+                return all(inside(vz + d * f * uz + iz * h, vy + d * f * uy + iy * h)
+                           for f in (0.3, 0.7, 1.0) for h in (0.03, t_e * 0.5, t_e * 0.95))
+
+            e0 = ext if runs_on(za, ya, -ext) else e
+            e1 = ext if runs_on(zb, yb, ext) else e
             with self.frame(("x", ang, (0, ya, za))):
                 y_lo, y_hi = (ya, ya + t_e) if inward_is_plus else (ya - t_e, ya)
                 nm = "%s_e%03d" % (name, ei - 1)
                 if L < 2.5 * bevel or bevel < 0.04 or t_e < bevel * 1.2:
                     # short edge: a plain strip is enough
-                    self.box(nm, x0 + 0.003, y_lo, za - e, x1 - 0.003, y_hi, za + L + e, fill, group, pattern)
+                    self.box(nm, x0 + 0.003, y_lo, za - e0, x1 - 0.003, y_hi, za + L + e1, fill, group, pattern)
                     continue
                 # inner part full width, outer band narrowed, two chamfers
                 s = 1 if inward_is_plus else -1
                 yo = ya                      # outline (outer face)
                 yb = ya + s * bevel          # end of the chamfer band
                 yi = ya + s * t_e            # inner face
-                self.box(nm, x0, min(yb, yi), za - e, x1, max(yb, yi), za + L + e, fill, group, pattern)
-                self.box(nm + "_o", x0 + bevel, min(yo, yb), za - e + 0.002, x1 - bevel, max(yo, yb),
-                         za + L + e - 0.002, fill, group, pattern)
+                self.box(nm, x0, min(yb, yi), za - e0, x1, max(yb, yi), za + L + e1, fill, group, pattern)
+                self.box(nm + "_o", x0 + bevel, min(yo, yb), za - e0 + 0.002, x1 - bevel, max(yo, yb),
+                         za + L + e1 - 0.002, fill, group, pattern)
                 for sx, cx in ((-1, x0), (1, x1)):
-                    self.edge("%s_ch%d" % (nm, sx + 1), "z", za - e + 0.004, za + L + e - 0.004, cx, yo,
+                    self.edge("%s_ch%d" % (nm, sx + 1), "z", za - e0 + 0.004, za + L + e1 - 0.004, cx, yo,
                               sx, -s, bevel, fill, group)
         return self
 
@@ -539,9 +551,59 @@ class Model:
                 p = [q[k] + org[k] for k in range(3)]
             return all(o.frm[i] - 1e-4 <= p[i] <= o.to[i] + 1e-4 for i in range(3))
 
+        o_box = {}
+        for o in occ:
+            if o.rot:
+                pts = [rotate((x, y, z), o.rot) for x in (o.frm[0], o.to[0]) for y in (o.frm[1], o.to[1])
+                       for z in (o.frm[2], o.to[2])]
+                o_box[id(o)] = ([min(q[a] for q in pts) for a in range(3)], [max(q[a] for q in pts) for a in range(3)])
+
+        def flat_covered(c, f):
+            """Exact test for an unrotated face against unrotated occluders:
+            the union of their footprints on the face plane must cover it."""
+            i = {"east": 0, "west": 0, "up": 1, "down": 1, "south": 2, "north": 2}[f]
+            out = 1 if f in ("east", "up", "south") else -1
+            v = (c.to[i] if out > 0 else c.frm[i]) + out * 0.002
+            j, k = [a for a in range(3) if a != i]
+            rects = [(o.frm[j], o.to[j], o.frm[k], o.to[k]) for o in occ
+                     if o is not c and not o.rot and o.frm[i] - 1e-4 <= v <= o.to[i] + 1e-4
+                     and (o.group == c.group or (o.group not in self.dynamic and c.group not in self.dynamic))]
+            tilted = [o for o in occ if o is not c and o.rot and o_box[id(o)][0][i] - 1e-4 <= v <= o_box[id(o)][1][i] + 1e-4
+                      and (o.group == c.group or (o.group not in self.dynamic and c.group not in self.dynamic))]
+            ja, jb, ka, kb = c.frm[j], c.to[j], c.frm[k], c.to[k]
+            gj = sorted({ja, jb} | {x for r in rects for x in r[:2] if ja < x < jb})
+            gk = sorted({ka, kb} | {x for r in rects for x in r[2:] if ka < x < kb})
+            for a0, a1 in zip(gj, gj[1:]):
+                for b0, b1 in zip(gk, gk[1:]):
+                    if a1 - a0 < 1e-4 or b1 - b0 < 1e-4:
+                        continue
+                    pa, pb = (a0 + a1) / 2, (b0 + b1) / 2
+                    if any(r[0] - 1e-4 <= pa <= r[1] + 1e-4 and r[2] - 1e-4 <= pb <= r[3] + 1e-4
+                           for r in rects):
+                        continue
+                    # not under a flat cube: a tilted one may still bury this
+                    # cell, checked on a fine grid of sample points
+                    near = [o for o in tilted if o_box[id(o)][0][j] <= a1 and o_box[id(o)][1][j] >= a0
+                            and o_box[id(o)][0][k] <= b1 and o_box[id(o)][1][k] >= b0]
+                    if not near:
+                        return False
+                    na = max(2, int((a1 - a0) / 0.1) + 1)
+                    nb = max(2, int((b1 - b0) / 0.1) + 1)
+                    for ia in range(na + 1):
+                        for ib in range(nb + 1):
+                            p = [0.0, 0.0, 0.0]
+                            p[i], p[j], p[k] = v, a0 + (a1 - a0) * ia / na, b0 + (b1 - b0) * ib / nb
+                            if not any(inside(o, p) for o in near):
+                                return False
+            return True
+
         hidden = set()
         for ci, c in enumerate(self.cubes):
             for f in FACES:
+                if not c.rot:
+                    if flat_covered(c, f):
+                        hidden.add((ci, f))
+                    continue
                 tl, tr, bl = (rotate(p, c.rot) for p in face_corners(c, f))
                 e1 = [tr[i] - tl[i] for i in range(3)]
                 e2 = [bl[i] - tl[i] for i in range(3)]

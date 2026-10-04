@@ -53,5 +53,60 @@
   ],
   "flip": false,
   "rotation": 0.0
+ },
+ "m1911": {
+  "photo": "8.webp",
+  "crop": [
+   0,
+   0,
+   1024,
+   768
+  ],
+  "flip": true,
+  "rotation": -5.9629726495588375
+ },
+ "m9a4": {
+  "photo": "9.png",
+  "crop": [
+   0,
+   0,
+   700,
+   700
+  ],
+  "flip": true,
+  "rotation": -19.97383387031086
+ },
+ "p320": {
+  "photo": "10.webp",
+  "crop": [
+   0,
+   0,
+   1024,
+   758
+  ],
+  "flip": false,
+  "rotation": 0.0
+ },
+ "mk23": {
+  "photo": "11.jpg",
+  "crop": [
+   0,
+   0,
+   700,
+   425
+  ],
+  "flip": false,
+  "rotation": 0.0
+ },
+ "rhino": {
+  "photo": "12.webp",
+  "crop": [
+   0,
+   0,
+   1024,
+   666
+  ],
+  "flip": true,
+  "rotation": 0.0
  }
 }
